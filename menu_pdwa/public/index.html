@@ -3,54 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Menú Digital &amp; Pedidos</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍕</text></svg>">
+  <title>Los Gauchos | Menú Digital</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍔</text></svg>">
   <link rel="stylesheet" href="css/main.css">
-  <style>
-    .hidden { display: none !important; }
-  </style>
 </head>
-<body>
-  <header class="header">
-    <h1>Menú Digital</h1>
+<body class="client-body">
+  <header class="client-hero">
+    <div class="hero-inner"><div class="brand-emblem">G</div><div><p class="hero-kicker">Los Gauchos</p><h1>Menú digital</h1><p class="hero-subtitle">Hecho al fuego, pedido a tu manera.</p></div><span class="hero-flame">✦</span></div>
   </header>
 
-  <main id="app">
+  <main id="app" class="client-main">
     <nav id="category-nav" class="category-nav" aria-label="Categorías del menú"></nav>
+    <div class="menu-heading"><div><p class="client-kicker">Carta de hoy</p><h2>Elige tus favoritos</h2></div><span class="menu-count">Pedidos directos · WhatsApp</span></div>
     <section id="product-list" class="product-list" aria-live="polite"></section>
   </main>
 
-  <button id="cart-fab" class="cart-fab hidden" style="position: fixed; bottom: 24px; right: 24px; width: 60px; height: 60px; border-radius: 50%; background: #e53e3e; color: white; border: none; box-shadow: 0 4px 14px rgba(229, 62, 62, 0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 90; transition: transform 0.2s;">
-    🛒
-    <span id="cart-badge" style="position: absolute; top: -4px; right: -4px; background: #222; color: white; font-size: 0.75rem; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white;">0</span>
-  </button>
+  <button id="cart-fab" class="cart-fab hidden" type="button" aria-label="Abrir carrito"><span class="cart-icon">🛒</span><span class="cart-fab-copy"><strong>Ver pedido</strong><small id="cart-total-preview">$0.00</small></span><span id="cart-badge" class="cart-badge">0</span></button>
 
-  <div id="pizza-modal" class="modal hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 50;">
-    <div style="background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 90%;">
-      <h2 id="modal-title" style="margin-top: 0; font-size: 1.25rem; font-weight: bold;"></h2>
-      <p id="modal-desc" style="color: #666; font-size: 0.9rem; margin-bottom: 16px;"></p>
-      <div style="margin-bottom: 16px;"><h4 style="margin-bottom: 8px; font-weight: 600;">Opciones / Incluidos:</h4><div id="modal-sizes"></div></div>
-      <div style="margin-bottom: 16px;"><h4 style="margin-bottom: 8px; font-weight: 600;">Adicionales o acompañantes:</h4><div id="modal-toppings"></div></div>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; border-top: 1px solid #eee; padding-top: 12px;">
-        <span style="font-size: 1.1rem; font-weight: bold;">Total: <span id="modal-total">$0.00</span></span>
-        <div><button id="btn-close-pizza-modal" style="background: #e5e7eb; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; margin-right: 8px;">Cancelar</button><button id="btn-add-pizza-cart" style="background: #e53e3e; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold;">Agregar</button></div>
-      </div>
+  <div id="pizza-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-panel customization-panel">
+      <div class="modal-heading"><div><p class="client-kicker">Personaliza tu pedido</p><h2 id="modal-title"></h2></div><button id="btn-close-pizza-modal" class="modal-close" type="button" aria-label="Cerrar">&times;</button></div>
+      <p id="modal-desc" class="modal-description"></p>
+      <section class="option-section"><h3><span>01</span> Opciones e incluidos</h3><div id="modal-sizes" class="option-list"></div></section>
+      <section class="option-section"><h3><span>02</span> Adicionales o acompañantes</h3><div id="modal-toppings" class="option-list"></div></section>
+      <div class="modal-footer"><div><small>Total estimado</small><strong id="modal-total">$0.00</strong></div><div class="modal-order-actions"><div class="quantity-control"><button id="modal-qty-minus" type="button" aria-label="Disminuir cantidad">−</button><span id="modal-qty">1</span><button id="modal-qty-plus" type="button" aria-label="Aumentar cantidad">+</button></div><button id="btn-add-pizza-cart" class="primary-action" type="button">Agregar al pedido</button></div></div>
     </div>
   </div>
 
-  <div id="cart-modal" class="modal hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; justify-content: flex-end;">
-    <div style="background: white; width: 100%; max-width: 420px; height: 100%; display: flex; flex-direction: column; box-shadow: -4px 0 15px rgba(0,0,0,0.1); box-sizing: border-box;">
-      <div style="padding: 18px 20px; background: #1a202c; color: white; display: flex; justify-content: space-between; align-items: center;"><div><h2 style="margin: 0; font-size: 1.15rem; font-weight: bold;">Comanda / Pedido</h2><small style="color: #a0aec0;" id="pos-items-count">0 productos seleccionados</small></div><button id="btn-close-cart-modal" style="background: none; border: none; font-size: 1.8rem; color: white; cursor: pointer; line-height: 1;">&times;</button></div>
-      <div id="cart-items-container" style="flex: 1; padding: 16px 20px; overflow-y: auto; background: #f8fafc;"></div>
-      <div style="padding: 16px 20px; background: white; border-top: 1px solid #e2e8f0; box-shadow: 0 -4px 10px rgba(0,0,0,0.03);">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;"><div><label style="display: block; font-weight: 600; font-size: 0.8rem; color: #4a5568; margin-bottom: 4px;">Mesa / Ubicación:</label><input type="text" id="order-table" placeholder="Ej: Mesa 2" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e0; border-radius: 6px; box-sizing: border-box; font-size: 0.85rem;"></div><div><label style="display: block; font-weight: 600; font-size: 0.8rem; color: #4a5568; margin-bottom: 4px;">Tipo de Orden:</label><select id="order-type" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e0; border-radius: 6px; box-sizing: border-box; font-size: 0.85rem; background: white;"><option value="Comer Aquí">Comer Aquí</option><option value="Para Llevar">Para Llevar</option><option value="Delivery">Delivery</option></select></div></div>
-        <div style="margin-bottom: 12px;"><input type="text" id="order-notes" placeholder="Notas (Ej: Sin cebolla, extra salsa...)" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e0; border-radius: 6px; box-sizing: border-box; font-size: 0.85rem;"></div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-top: 8px; border-top: 1px dashed #e2e8f0;"><span style="font-size: 1rem; color: #718096; font-weight: 600;">Total General</span><strong id="cart-modal-total" style="font-size: 1.4rem; color: #e53e3e;">$0.00</strong></div>
-        <button id="btn-send-whatsapp" style="width: 100%; background: #25D366; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 0.95rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 3px 8px rgba(37, 211, 102, 0.3);">📲 Confirmar &amp; Enviar Comanda</button>
-      </div>
-    </div>
+  <div id="cart-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cart-title">
+    <div class="cart-panel"><div class="cart-header"><div><p class="client-kicker">Tu selección</p><h2 id="cart-title">Comanda / Pedido</h2><small id="pos-items-count">0 productos seleccionados</small></div><button id="btn-close-cart-modal" class="modal-close light" type="button" aria-label="Cerrar">&times;</button></div><div id="cart-items-container" class="cart-items"></div><div class="cart-checkout"><div class="checkout-grid"><label>Mesa / Ubicación<input type="text" id="order-table" placeholder="Ej: Mesa 2"></label><label>Tipo de orden<select id="order-type"><option value="Comer Aquí">Comer Aquí</option><option value="Para Llevar">Para Llevar</option><option value="Delivery">Delivery</option></select></label></div><label>Notas del pedido<input type="text" id="order-notes" placeholder="Sin cebolla, extra salsa..."></label><div class="cart-total"><span>Total general</span><strong id="cart-modal-total">$0.00</strong></div><button id="btn-send-whatsapp" class="whatsapp-action" type="button">📲 Confirmar y enviar comanda</button></div></div>
   </div>
-
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

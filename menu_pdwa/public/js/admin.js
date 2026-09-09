@@ -37,6 +37,8 @@ const categoryForm = document.getElementById('category-form');
 const catNameInput = document.getElementById('cat-name');
 const catCustomCheck = document.getElementById('cat-customizable');
 const catIceCreamCheck = document.getElementById('cat-icecream');
+const productSearch = document.getElementById('product-search');
+const productCount = document.getElementById('product-count');
 
 // Inicialización
 if (token) {
@@ -64,6 +66,13 @@ const extraTypeLabels = {
   icecream_flavor: 'Sabor de helado',
   icecream_topping: 'Topping de helado'
 };
+
+document.querySelectorAll('.dashboard-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.dashboard-tab').forEach(item => item.classList.toggle('is-active', item === tab));
+    document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('is-active', panel.dataset.panel === tab.dataset.tab));
+  });
+});
 
 // Login
 loginForm.addEventListener('submit', async (e) => {
@@ -138,24 +147,36 @@ async function loadProducts() {
         <td><span class="badge">${p.category_name || p.category_id}</span></td>
         <td>$${Number(p.price).toFixed(2)}</td>
         <td>${p.customization_type || 'simple'}${p.promo_free_extras ? ' + 1 adicional gratis' : ''}</td>
-        <td>${p.available ? '🟢 Disponible' : '🔴 Agotado'}</td>
+        <td><span class="status-pill ${p.available ? 'available' : 'unavailable'}">${p.available ? 'Disponible' : 'Agotado'}</span></td>
         <td style="display: flex; gap: 5px;">
-          <button onclick="editProduct('${p.id}', '${p.category_id}', '${escapeHtml(p.name)}', ${p.price}, '${escapeHtml(p.description || '')}', '${p.customization_type || 'simple'}', ${Boolean(p.promo_free_extras)}, ${p.available})" style="width: auto; padding: 5px 10px; background:#e0a800;">
-            Editar
-          </button>
-          <button onclick="toggleProduct('${p.id}', ${!p.available})" style="width: auto; padding: 5px 10px;">
-            ${p.available ? 'Desactivar' : 'Activar'}
-          </button>
-          <button onclick="deleteProduct('${p.id}')" style="width: auto; padding: 5px 10px; background:#dc3545;">
-            Eliminar
-          </button>
+          <button title="Editar" onclick="editProduct('${p.id}', '${p.category_id}', '${escapeHtml(p.name)}', ${p.price}, '${escapeHtml(p.description || '')}', '${p.customization_type || 'simple'}', ${Boolean(p.promo_free_extras)}, ${p.available})">✏️</button>
+          <button title="${p.available ? 'Ocultar' : 'Activar'}" onclick="toggleProduct('${p.id}', ${!p.available})">${p.available ? '👁️' : '◉'}</button>
+          <button title="Eliminar" onclick="deleteProduct('${p.id}')">🗑️</button>
         </td>
       </tr>
     `).join('');
+    updateProductCount();
   } catch (err) {
     console.error('Error al cargar productos:', err);
   }
 }
+
+function updateProductCount() {
+  if (!productCount || !productsList) return;
+  const rows = [...productsList.querySelectorAll('tr')];
+  const visible = rows.filter(row => row.style.display !== 'none').length;
+  productCount.textContent = productSearch?.value ? `${visible} resultado${visible === 1 ? '' : 's'}` : `${rows.length} producto${rows.length === 1 ? '' : 's'} registrados`;
+}
+
+function filterProducts() {
+  const query = productSearch.value.trim().toLowerCase();
+  productsList.querySelectorAll('tr').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
+  });
+  updateProductCount();
+}
+
+if (productSearch) productSearch.addEventListener('input', filterProducts);
 
 async function loadExtras() {
   try {
@@ -175,10 +196,10 @@ async function loadExtras() {
         <td><strong>${escapeHtml(extra.name)}</strong></td>
         <td>${extraTypeLabels[extra.type] || extra.type}</td>
         <td>${extra.included ? 'Incluido' : `$${Number(extra.price).toFixed(2)}`}</td>
-        <td>${extra.available ? '🟢 Disponible' : '🔴 Agotado'}</td>
+        <td><span class="status-pill ${extra.available ? 'available' : 'unavailable'}">${extra.available ? 'Disponible' : 'Agotado'}</span></td>
         <td style="display: flex; gap: 5px;">
-          <button onclick="editExtra('${extra.id}', '${extra.type}', '${escapeHtml(extra.name)}', ${extra.price}, ${Boolean(extra.included)}, ${extra.available})" style="width: auto; padding: 5px 10px; background:#e0a800;">Editar</button>
-          <button onclick="toggleExtra('${extra.id}', ${!extra.available})" style="width: auto; padding: 5px 10px;">${extra.available ? 'Marcar agotado' : 'Reactivar'}</button>
+          <button title="Editar" onclick="editExtra('${extra.id}', '${extra.type}', '${escapeHtml(extra.name)}', ${extra.price}, ${Boolean(extra.included)}, ${extra.available})">✏️</button>
+          <button title="${extra.available ? 'Ocultar' : 'Activar'}" onclick="toggleExtra('${extra.id}', ${!extra.available})">${extra.available ? '👁️' : '◉'}</button>
         </td>
       </tr>
     `).join('');

@@ -3,126 +3,72 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Panel de Administración - Menú Digital</title>
-  <style>
-    body { font-family: system-ui, sans-serif; background: #f4f4f9; padding: 20px; max-width: 800px; margin: 0 auto; }
-    .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    .hidden { display: none; }
-    input, button, select { display: block; width: 100%; padding: 10px; margin-top: 10px; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box; }
-    button { background: #28a745; color: white; border: none; font-weight: bold; cursor: pointer; }
-    button:hover { background: #218838; }
-    .btn-danger { background: #dc3545; }
-    .btn-danger:hover { background: #c82333; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-    th { background: #eee; }
-  </style>
+  <title>Gauchos | Administración</title>
+  <link rel="stylesheet" href="css/main.css">
 </head>
-<body>
-
-  <!-- FORMULARIO DE LOGIN -->
-  <div id="login-section" class="card">
-    <h2>Iniciar Sesión (Admin)</h2>
-    <form id="login-form">
-      <input type="text" id="username" placeholder="Usuario" required value="admin">
-      <input type="password" id="password" placeholder="Contraseña" required value="admin123">
-      <button type="submit">Ingresar</button>
-    </form>
-    <p id="login-error" style="color: red;" class="hidden"></p>
-  </div>
-
-  <!-- PANEL DE GESTIÓN (OCULTO HASTA AUTENTICAR) -->
-  <div id="admin-panel" class="card hidden">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-      <h2>Gestión de Productos y Promociones</h2>
-      <button id="logout-btn" class="btn-danger" style="width: auto;">Cerrar Sesión</button>
-    </div>
-
-    <form id="product-form" class="card" style="box-shadow: none; padding: 0;">
-      <input type="hidden" id="prod-id">
-      <label for="prod-category">Categoría</label>
-      <select id="prod-category" required></select>
-      <label for="prod-name">Nombre</label>
-      <input type="text" id="prod-name" required>
-      <label for="prod-price">Precio final ($)</label>
-      <input type="number" id="prod-price" min="0" step="0.01" required>
-      <label for="prod-description">Descripción</label>
-      <textarea id="prod-description" rows="3" style="width: 100%; margin-top: 10px; box-sizing: border-box;"></textarea>
-      <label for="prod-customization">Tipo de personalización</label>
-      <select id="prod-customization">
-        <option value="simple">Producto simple</option>
-        <option value="icecream">Helado: sabores y toppings</option>
-        <option value="pizza">Pizza: tamaño y adicionales</option>
-        <option value="promo_pizza">Promo de pizzas: adicionales gratis</option>
-      </select>
-      <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
-        <input type="checkbox" id="prod-free-extras" style="width: auto; margin: 0;">
-        Incluir un adicional gratis por pizza
-      </label>
-      <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
-        <input type="checkbox" id="prod-available" checked style="width: auto; margin: 0;">
-        Disponible para la venta
-      </label>
-      <div style="display: flex; gap: 8px;">
-        <button type="submit">Guardar producto</button>
-        <button type="button" id="cancel-edit-btn" class="btn-danger hidden">Cancelar</button>
-      </div>
-    </form>
-
-    <!-- TABLA DE PRODUCTOS -->
-    <table>
-      <thead>
-        <tr>
-          <th>Producto</th>
-          <th>Categoría</th>
-          <th>Precio ($)</th>
-          <th>Personalización</th>
-          <th>Estado</th>
-          <th>Acción</th>
-        </tr>
-      </thead>
-      <tbody id="products-list"></tbody>
-    </table>
-
-    <section class="card" style="margin-top: 24px; box-shadow: none; border: 1px solid #ddd;">
-      <h2>Extras, toppings y sabores</h2>
-      <form id="extra-form">
-        <input type="hidden" id="extra-id">
-        <label for="extra-type">Tipo</label>
-        <select id="extra-type" required>
-          <option value="pizza">Extra para pizza</option>
-          <option value="burger">Extra para hamburguesa</option>
-          <option value="icecream_flavor">Sabor de helado</option>
-          <option value="icecream_topping">Topping de helado</option>
-        </select>
-        <label for="extra-name">Nombre</label>
-        <input type="text" id="extra-name" required placeholder="Ej: Champiñones, Pistacho, Tocineta">
-        <label for="extra-price">Precio adicional ($)</label>
-        <input type="number" id="extra-price" min="0" step="0.01" value="0">
-        <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
-          <input type="checkbox" id="extra-included" style="width: auto; margin: 0;">
-          Ingrediente incluido (vegetal de hamburguesa o sabor de helado)
-        </label>
-        <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
-          <input type="checkbox" id="extra-available" checked style="width: auto; margin: 0;">
-          Disponible para el cliente
-        </label>
-        <div style="display: flex; gap: 8px;">
-          <button type="submit">Guardar extra</button>
-          <button type="button" id="cancel-extra-btn" class="btn-danger hidden">Cancelar</button>
-        </div>
+<body class="admin-body">
+  <section id="login-section" class="login-shell">
+    <div class="login-panel">
+      <div class="brand-mark">G</div>
+      <p class="eyebrow">Gauchos · Menú digital</p>
+      <h1>Acceso administrativo</h1>
+      <p class="login-copy">Gestiona la carta, los extras y la disponibilidad desde un solo lugar.</p>
+      <form id="login-form" class="stack-form">
+        <label for="username">Usuario</label>
+        <input type="text" id="username" autocomplete="username" required value="admin">
+        <label for="password">Contraseña</label>
+        <input type="password" id="password" autocomplete="current-password" required value="admin123">
+        <button type="submit" class="primary-button">Ingresar al panel</button>
       </form>
+      <p id="login-error" class="form-error hidden"></p>
+    </div>
+  </section>
 
-      <table>
-        <thead>
-          <tr><th>Nombre</th><th>Tipo</th><th>Precio</th><th>Estado</th><th>Acción</th></tr>
-        </thead>
-        <tbody id="extras-list"></tbody>
-      </table>
+  <main id="admin-panel" class="admin-shell hidden">
+    <header class="admin-header">
+      <div class="brand-lockup"><div class="brand-mark small">G</div><div><p class="eyebrow">Gauchos</p><strong>Centro de control</strong></div></div>
+      <div class="admin-header-actions"><span class="admin-status"><span class="status-dot"></span> Administrador</span><button id="logout-btn" class="ghost-button">Cerrar sesión</button></div>
+    </header>
+
+    <section class="dashboard-intro"><div><p class="eyebrow">Operaciones</p><h1>Tu menú, bajo control.</h1><p>Actualiza productos y disponibilidad sin perder el ritmo del servicio.</p></div><div class="intro-date">Panel activo<br><strong>Hoy</strong></div></section>
+
+    <nav class="dashboard-tabs" aria-label="Secciones del panel">
+      <button class="dashboard-tab is-active" data-tab="products" type="button"><span>📦</span> Productos y promos</button>
+      <button class="dashboard-tab" data-tab="extras" type="button"><span>🍧</span> Toppings y sabores</button>
+      <button class="dashboard-tab" data-tab="categories" type="button"><span>📂</span> Categorías</button>
+    </nav>
+
+    <section class="tab-panel is-active" data-panel="products">
+      <div class="section-heading"><div><p class="eyebrow">Inventario</p><h2>Productos y promociones</h2></div><span class="section-note">Edita precios, tipos y disponibilidad</span></div>
+      <div class="content-grid">
+        <section class="surface-card form-card">
+          <div class="card-heading"><div><span class="icon-tile">＋</span><div><h3>Agregar producto</h3><p>Crea un item para la carta.</p></div></div></div>
+          <form id="product-form" class="dashboard-form">
+            <input type="hidden" id="prod-id">
+            <div class="form-grid two-columns"><div><label for="prod-name">Nombre</label><input type="text" id="prod-name" placeholder="Ej. Gaucho Especial" required></div><div><label for="prod-category">Categoría</label><select id="prod-category" required></select></div></div>
+            <div class="form-grid two-columns"><div><label for="prod-price">Precio final ($)</label><input type="number" id="prod-price" min="0" step="0.01" placeholder="0.00" required></div><div><label for="prod-customization">Personalización</label><select id="prod-customization"><option value="simple">Producto simple</option><option value="icecream">Helado: sabores y toppings</option><option value="pizza">Pizza: tamaño y adicionales</option><option value="promo_pizza">Promo de pizzas: adicionales gratis</option></select></div></div>
+            <div><label for="prod-description">Descripción</label><textarea id="prod-description" rows="3" placeholder="Describe ingredientes o condiciones de la promoción"></textarea></div>
+            <div class="check-row"><label class="check-label"><input type="checkbox" id="prod-free-extras"> <span>Un adicional gratis por pizza</span></label><label class="check-label"><input type="checkbox" id="prod-available" checked> <span>Disponible para la venta</span></label></div>
+            <div class="form-actions"><button type="submit" class="primary-button">Guardar producto</button><button type="button" id="cancel-edit-btn" class="ghost-button hidden">Cancelar</button></div>
+          </form>
+        </section>
+        <section class="surface-card table-card"><div class="table-toolbar"><div><h3>Catálogo publicado</h3><p id="product-count">Todos los productos</p></div><div class="search-field"><span>⌕</span><input id="product-search" type="search" placeholder="Buscar producto o categoría" aria-label="Buscar producto o categoría"></div></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Producto</th><th>Categoría</th><th>Precio</th><th>Tipo</th><th>Estado</th><th class="actions-column">Acciones</th></tr></thead><tbody id="products-list"></tbody></table></div></section>
+      </div>
     </section>
-  </div>
 
-  <!-- En admin.html -->
-<script type="module" src="js/admin.js"></script>
+    <section class="tab-panel" data-panel="extras">
+      <div class="section-heading"><div><p class="eyebrow">Catálogo complementario</p><h2>Toppings y sabores</h2></div><span class="section-note">Activa o pausa opciones sin borrarlas</span></div>
+      <div class="content-grid">
+        <section class="surface-card form-card"><div class="card-heading"><div><span class="icon-tile peach">✦</span><div><h3>Agregar extra</h3><p>Pizza, hamburguesa o helado.</p></div></div></div><form id="extra-form" class="dashboard-form"><input type="hidden" id="extra-id"><div class="form-grid two-columns"><div><label for="extra-name">Nombre</label><input type="text" id="extra-name" placeholder="Ej. Pistacho o champiñones" required></div><div><label for="extra-type">Tipo</label><select id="extra-type"><option value="pizza">Extra para pizza</option><option value="burger">Extra para hamburguesa</option><option value="icecream_flavor">Sabor de helado</option><option value="icecream_topping">Topping de helado</option></select></div></div><div><label for="extra-price">Precio adicional ($)</label><input type="number" id="extra-price" min="0" step="0.01" value="0"></div><div class="check-row"><label class="check-label"><input type="checkbox" id="extra-included"> <span>Ingrediente incluido</span></label><label class="check-label"><input type="checkbox" id="extra-available" checked> <span>Disponible para el cliente</span></label></div><div class="form-actions"><button type="submit" class="primary-button">Guardar extra</button><button type="button" id="cancel-extra-btn" class="ghost-button hidden">Cancelar</button></div></form></section>
+        <section class="surface-card table-card"><div class="table-toolbar"><div><h3>Opciones disponibles</h3><p>Sabores, toppings y adicionales</p></div></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Nombre</th><th>Tipo</th><th>Precio</th><th>Estado</th><th class="actions-column">Acciones</th></tr></thead><tbody id="extras-list"></tbody></table></div></section>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-panel="categories">
+      <div class="section-heading"><div><p class="eyebrow">Organización</p><h2>Categorías</h2></div><span class="section-note">Ordena cómo se muestra tu carta</span></div>
+      <section class="surface-card category-card"><div class="card-heading"><div><span class="icon-tile green">⌘</span><div><h3>Nueva categoría</h3><p>Las categorías aparecen como pestañas para tus clientes.</p></div></div></div><form id="category-form" class="dashboard-form"><div class="form-grid three-columns"><div><label for="cat-name">Nombre</label><input type="text" id="cat-name" placeholder="Ej. Malteadas" required></div><label class="check-label category-toggle"><input type="checkbox" id="cat-customizable"> <span>Productos personalizables</span></label><label class="check-label category-toggle"><input type="checkbox" id="cat-icecream"> <span>Módulo de helados</span></label></div><button type="submit" class="primary-button">Crear categoría</button></form></section>
+    </section>
+  </main>
+  <script type="module" src="js/admin.js"></script>
 </body>
 </html>

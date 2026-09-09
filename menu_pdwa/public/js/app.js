@@ -15,6 +15,7 @@ let selectedProduct = null;
 let selectedPizzaCategory = null;
 let selectedIceCreamCategory = null;
 let selectedPromo = null;
+let selectedQuantity = 1;
 
 // Cargar datos desde la API del servidor
 async function initApp() {
@@ -47,13 +48,10 @@ function renderCategories() {
   const nav = document.getElementById('category-nav');
   if (!nav) return;
 
+  const icons = { promos: '🏷️', hamburguesas: '🍔', granjeros: '🍗', pizzas: '🍕', helados: '🍦', bebidas: '🥤', entradas: '🍟', ensaladas: '🥗' };
   nav.innerHTML = MENU_DATA.map(cat => `
-    <button 
-      data-category-id="${cat.id}" 
-      class="category-btn" 
-      style="padding: 8px 16px; border-radius: 20px; border: 1px solid #ddd; cursor: pointer; white-space: nowrap; font-weight: bold; background: ${cat.id === currentCategory ? '#e53e3e' : '#fff'}; color: ${cat.id === currentCategory ? '#fff' : '#333'}; margin-right: 6px;"
-    >
-      ${cat.name}
+    <button data-category-id="${cat.id}" class="category-btn ${cat.id === currentCategory ? 'is-active' : ''}" type="button">
+      <span>${icons[cat.id] || '🍽️'}</span>${cat.name}
     </button>
   `).join('');
 }
@@ -67,74 +65,43 @@ function renderProducts(categoryId) {
   if (!category) return;
 
   container.innerHTML = '';
-
   const products = category.products || [];
+  const categoryIcons = { promos: '🏷️', hamburguesas: '🍔', granjeros: '🍗', pizzas: '🍕', helados: '🍦', bebidas: '🥤', entradas: '🍟', ensaladas: '🥗' };
+  const icon = categoryIcons[category.id] || '🍽️';
+
+  const card = (product, actionClass, actionLabel, actionIcon = '+') => `
+    <article class="food-card">
+      <div class="food-card-top"><div><span class="food-category">${category.name}</span><h3>${product.name}</h3><p class="food-description">${product.description || 'Preparado al momento con ingredientes seleccionados.'}</p></div><span class="food-badge">${icon}</span></div>
+      <div class="food-card-bottom"><strong class="food-price">$${Number(product.price).toFixed(2)}</strong><button class="food-action ${actionClass || 'btn-add-direct'}" data-prod-id="${product.id}" type="button">${actionIcon} ${actionLabel}</button></div>
+    </article>
+  `;
 
   if (category.id === 'promos') {
-    container.innerHTML = products.map(prod => `
-      <div style="background:#fff; padding:16px; border-radius:8px; border:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <div style="flex:1; padding-right:12px;"><h3 style="margin:0 0 4px 0; font-size:18px; color:#333;">${prod.name}</h3>${prod.description ? `<p style="margin:0 0 8px 0; font-size:13px; color:#666;">${prod.description}</p>` : ''}<strong style="color:#e53e3e;">$${Number(prod.price).toFixed(2)}</strong></div>
-        ${prod.customization_type === 'promo_pizza' ? `<button data-prod-id="${prod.id}" class="btn-open-promo-custom" style="background:#e53e3e; color:#fff; border:none; padding:10px 16px; border-radius:6px; cursor:pointer; font-weight:bold;">Personalizar</button>` : `<button data-prod-id="${prod.id}" class="btn-add-direct" style="background:#222; color:#fff; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-weight:bold;">+ Agregar</button>`}
-      </div>
-    `).join('');
+    container.innerHTML = products.length ? products.map(prod => prod.customization_type === 'promo_pizza' ? card(prod, 'customize btn-open-promo-custom', 'Personalizar', '⚙️') : card(prod, '', 'Agregar')).join('') : '<div class="empty-menu">No hay promociones disponibles por ahora.</div>';
     return;
   }
 
   // CASO A: Pizzas Personalizables
   if (category.isCustomPizza) {
-    const card = document.createElement('div');
-    card.style.cssText = 'background:#fff; padding:16px; border-radius:8px; border:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;';
-    card.innerHTML = `
-      <div>
-        <h3 style="margin:0 0 4px 0; font-size:18px; color:#333;">Pizza ${category.baseName}</h3>
-        <p style="margin:0 0 8px 0; font-size:14px; color:#666;">Selecciona el tamaño e ingredientes adicionales.</p>
-        <strong style="color:#e53e3e;">Desde $${category.sizes?.[0]?.price?.toFixed(2) || '0.00'}</strong>
-      </div>
-      <button id="btn-open-pizza-custom" style="background:#e53e3e; color:#fff; border:none; padding:10px 16px; border-radius:6px; cursor:pointer; font-weight:bold;">
-        Personalizar
-      </button>
-    `;
-    container.appendChild(card);
+    const pizza = { id: 'custom-pizza', name: `Pizza ${category.baseName}`, description: 'Elige tamaño y agrega tus ingredientes favoritos.', price: category.sizes?.[0]?.price || 0 };
+    container.innerHTML = `<article class="food-card"><div class="food-card-top"><div><span class="food-category">${category.name}</span><h3>${pizza.name}</h3><p class="food-description">${pizza.description}</p></div><span class="food-badge">🍕</span></div><div class="food-card-bottom"><strong class="food-price">Desde $${Number(pizza.price).toFixed(2)}</strong><button id="btn-open-pizza-custom" class="food-action customize" type="button">⚙️ Personalizar</button></div></article>`;
     return;
   }
 
   // CASO B: Módulo de Helados (Sabores y Toppings)
   if (category.isCustomIceCream) {
-    const products = category.products || [];
-    container.innerHTML = products.map(prod => `
-      <div style="background:#fff; padding:16px; border-radius:8px; border:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <div>
-          <h3 style="margin:0 0 4px 0; font-size:18px; color:#333;">🍦 ${prod.name}</h3>
-          ${prod.description ? `<p style="margin:0 0 8px 0; font-size:13px; color:#666;">${prod.description}</p>` : ''}
-          <strong style="color:#e53e3e;">$${prod.price.toFixed(2)}</strong>
-        </div>
-        <button data-prod-id="${prod.id}" class="btn-open-icecream-custom" style="background:#d69e2e; color:#fff; border:none; padding:10px 16px; border-radius:6px; cursor:pointer; font-weight:bold;">
-          Elegir Sabores
-        </button>
-      </div>
-    `).join('');
+    container.innerHTML = products.length ? products.map(prod => card(prod, 'customize btn-open-icecream-custom', 'Elegir sabores', '⚙️')).join('') : '<div class="empty-menu">No hay presentaciones de helado disponibles por ahora.</div>';
     return;
   }
 
   // CASO C: Productos Generales, Hamburguesas y Promociones
-  container.innerHTML = products.map(prod => `
-    <div style="background:#fff; padding:16px; border-radius:8px; border:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-      <div style="flex:1; padding-right:12px;">
-        <h3 style="margin:0 0 4px 0; font-size:18px; color:#333;">${prod.name}</h3>
-        ${prod.description ? `<p style="margin:0 0 8px 0; font-size:13px; color:#666;">${prod.description}</p>` : ''}
-        <strong style="color:#e53e3e;">$${prod.price.toFixed(2)}</strong>
-      </div>
-      ${prod.customization_type === 'icecream' || category.isCustomizable
-        ? `<button data-prod-id="${prod.id}" class="btn-open-item-custom" style="background:#e53e3e; color:#fff; border:none; padding:10px 16px; border-radius:6px; cursor:pointer; font-weight:bold;">Personalizar</button>`
-        : `<button data-prod-id="${prod.id}" class="btn-add-direct" style="background:#222; color:#fff; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-weight:bold;">+ Agregar</button>`
-      }
-    </div>
-  `).join('');
+  container.innerHTML = products.length ? products.map(prod => (prod.customization_type === 'icecream' || category.isCustomizable) ? card(prod, 'customize btn-open-item-custom', 'Personalizar', '⚙️') : card(prod, '', 'Agregar')).join('') : '<div class="empty-menu">No hay productos disponibles en esta categoría.</div>';
 }
 
 // 3. MODAL DE HAMBURGUESAS Y GRANJEROS
 function openItemModal(product) {
   selectedProduct = product;
+  selectedQuantity = 1;
   const modal = document.getElementById('pizza-modal');
   if (!modal) return;
 
@@ -200,13 +167,14 @@ function updateItemPrice() {
 
   const totalElement = document.getElementById('modal-total');
   if (totalElement) {
-    totalElement.textContent = `$${total.toFixed(2)}`;
+    totalElement.textContent = `$${(total * selectedQuantity).toFixed(2)}`;
   }
 }
 
 // 4. MODAL DE HELADOS (SABORES Y TOPPINGS)
 function openIceCreamModal(product, category) {
   selectedProduct = product;
+  selectedQuantity = 1;
   selectedIceCreamCategory = category;
   const modal = document.getElementById('pizza-modal');
   if (!modal) return;
@@ -265,13 +233,14 @@ function updateIceCreamPrice() {
   });
 
   const totalElement = document.getElementById('modal-total');
-  if (totalElement) totalElement.textContent = `$${total.toFixed(2)}`;
+  if (totalElement) totalElement.textContent = `$${(total * selectedQuantity).toFixed(2)}`;
 }
 
 // 5. MODAL DE PIZZAS
 function openPizzaModal(pizzaCategory) {
   selectedPizzaCategory = pizzaCategory;
   selectedProduct = null;
+  selectedQuantity = 1;
   const modal = document.getElementById('pizza-modal');
   if (!modal) return;
 
@@ -306,6 +275,7 @@ function openPizzaModal(pizzaCategory) {
 
 function openPromoPizzaModal(product) {
   selectedPromo = product;
+  selectedQuantity = 1;
   selectedProduct = null;
   selectedPizzaCategory = null;
   selectedIceCreamCategory = null;
@@ -349,7 +319,7 @@ function updatePromoPizzaPrice() {
     });
   });
   const totalElement = document.getElementById('modal-total');
-  if (totalElement) totalElement.textContent = `$${total.toFixed(2)}`;
+  if (totalElement) totalElement.textContent = `$${(total * selectedQuantity).toFixed(2)}`;
 }
 
 function updatePizzaPrice() {
@@ -361,7 +331,17 @@ function updatePizzaPrice() {
   });
 
   const totalElement = document.getElementById('modal-total');
-  if (totalElement) totalElement.textContent = `$${total.toFixed(2)}`;
+  if (totalElement) totalElement.textContent = `$${(total * selectedQuantity).toFixed(2)}`;
+}
+
+function updateModalQuantity(delta) {
+  selectedQuantity = Math.max(1, selectedQuantity + delta);
+  const quantityElement = document.getElementById('modal-qty');
+  if (quantityElement) quantityElement.textContent = selectedQuantity;
+  if (selectedPromo) updatePromoPizzaPrice();
+  else if (selectedPizzaCategory) updatePizzaPrice();
+  else if (selectedIceCreamCategory) updateIceCreamPrice();
+  else updateItemPrice();
 }
 
 function closeModal() {
@@ -373,21 +353,27 @@ function closeModal() {
   selectedProduct = null;
   selectedIceCreamCategory = null;
   selectedPromo = null;
+  selectedQuantity = 1;
+  const quantityElement = document.getElementById('modal-qty');
+  if (quantityElement) quantityElement.textContent = '1';
 }
 
 // 6. BOTÓN FAB DEL CARRITO Y COMANDA POS LATERAL
 function updateCartBar() {
   const cartFab = document.getElementById('cart-fab');
   const cartBadge = document.getElementById('cart-badge');
+  const cartPreview = document.getElementById('cart-total-preview');
 
   if (!cartFab) return;
 
   const items = cartState.getItems();
   const count = items.reduce((sum, i) => sum + i.quantity, 0);
+  const total = items.reduce((sum, i) => sum + (i.unitPrice * i.quantity), 0);
 
   if (count > 0) {
     cartFab.classList.remove('hidden');
     if (cartBadge) cartBadge.textContent = count;
+    if (cartPreview) cartPreview.textContent = `$${total.toFixed(2)}`;
   } else {
     cartFab.classList.add('hidden');
     closeCartModal();
@@ -567,6 +553,16 @@ function setupGlobalEventListeners() {
       return;
     }
 
+    if (e.target.closest('#modal-qty-minus')) {
+      updateModalQuantity(-1);
+      return;
+    }
+
+    if (e.target.closest('#modal-qty-plus')) {
+      updateModalQuantity(1);
+      return;
+    }
+
     // --- EVENTOS DEL CARRITO Y FAB ---
     if (e.target.closest('#cart-fab')) {
       openCartModal();
@@ -612,7 +608,7 @@ function setupGlobalEventListeners() {
           id: `icecream-${selectedProduct.id}-${Date.now()}`,
           name: selectedProduct.name,
           unitPrice: selectedProduct.price + extraCost,
-          quantity: 1,
+          quantity: selectedQuantity,
           customizations: { flavors: selectedFlavors, extras }
         });
 
@@ -639,7 +635,7 @@ function setupGlobalEventListeners() {
           id: `${selectedProduct.id}-${Date.now()}`,
           name: selectedProduct.name,
           unitPrice: selectedProduct.price + extraCost,
-          quantity: 1,
+          quantity: selectedQuantity,
           customizations: { removed: removedToppings, extras }
         });
 
@@ -665,7 +661,7 @@ function setupGlobalEventListeners() {
           id: `pizza-${sizeInput ? sizeInput.value : 'custom'}-${Date.now()}`,
           name: `Pizza ${selectedPizzaCategory.baseName} (${sizeName})`,
           unitPrice: unitPrice,
-          quantity: 1,
+          quantity: selectedQuantity,
           customizations: { size: sizeName, extras }
         });
 
@@ -689,7 +685,7 @@ function setupGlobalEventListeners() {
           id: `promo-${selectedPromo.id}-${Date.now()}`,
           name: selectedPromo.name,
           unitPrice: Number(selectedPromo.price) + extrasCost,
-          quantity: 1,
+          quantity: selectedQuantity,
           customizations: { pizzas }
         });
         closeModal();
