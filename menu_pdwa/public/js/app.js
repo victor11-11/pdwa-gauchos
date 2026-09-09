@@ -1,15 +1,32 @@
-import { MENU_DATA, BASE_TOPPINGS, BASE_SAUCES, BURGER_EXTRAS } from './data/menu.js';
+import { BASE_TOPPINGS, BASE_SAUCES, BURGER_EXTRAS } from './data/menu.js';
 import { cartState } from './state/cart.js';
 
-let currentCategory = MENU_DATA[0]?.id || 'hamburguesas';
+// Reemplazamos la constante fija por una variable dinámica
+let MENU_DATA = [];
+let currentCategory = 'hamburguesas';
 let selectedProduct = null;
 let selectedPizzaCategory = null;
 
-function initApp() {
-  renderCategories();
-  renderProducts(currentCategory);
-  setupGlobalEventListeners();
-  updateCartBar();
+// Cargar datos desde la API del servidor
+async function initApp() {
+  try {
+    const res = await fetch('/api/menu', { cache: 'no-store' });
+    const data = await res.json();
+    
+    // Asignamos la carta obtenida directamente desde SQLite
+    MENU_DATA = data.menu; 
+
+    if (MENU_DATA.length > 0) {
+      currentCategory = MENU_DATA[0].id;
+    }
+
+    renderCategories();
+    renderProducts(currentCategory);
+    setupGlobalEventListeners();
+    updateCartBar();
+  } catch (err) {
+    console.error('Error al cargar el menú desde la API:', err);
+  }
 }
 
 // 1. RENDERIZAR CATEGORÍAS
@@ -56,7 +73,7 @@ function renderProducts(categoryId) {
     return;
   }
 
-  // CASO B: Productos Personalizables (Hamburguesas / Granjeros) vs Directos
+  // CASO B: Productos Personalizables vs Directos (Filtra de forma segura los activos)
   const products = category.products || [];
   container.innerHTML = products.map(prod => `
     <div style="background:#fff; padding:16px; border-radius:8px; border:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
@@ -75,7 +92,7 @@ function renderProducts(categoryId) {
 // 3. MODAL DE HAMBURGUESAS Y GRANJEROS
 function openItemModal(product) {
   selectedProduct = product;
-  const modal = document.getElementById('pizza-modal'); // Reutilizamos el modal existente
+  const modal = document.getElementById('pizza-modal');
   if (!modal) return;
 
   const titleEl = document.getElementById('modal-title');
@@ -83,7 +100,6 @@ function openItemModal(product) {
   if (titleEl) titleEl.textContent = product.name;
   if (descEl) descEl.textContent = 'Selecciona lo que incluye tu pedido y los extras opcionales.';
 
-  // Sección de Ingredientes Incluidos (Gratis)
   const sizesContainer = document.getElementById('modal-sizes');
   if (sizesContainer) {
     sizesContainer.innerHTML = `
@@ -108,7 +124,6 @@ function openItemModal(product) {
     `;
   }
 
-  // Sección de Extras Pagados
   const toppingsContainer = document.getElementById('modal-toppings');
   if (toppingsContainer) {
     toppingsContainer.innerHTML = `
@@ -226,7 +241,6 @@ function updateCartBar() {
 // 6. EVENT DELEGATION
 function setupGlobalEventListeners() {
   document.addEventListener('click', (e) => {
-    // Cambio de categoría
     const catBtn = e.target.closest('[data-category-id]');
     if (catBtn) {
       currentCategory = catBtn.dataset.categoryId;
@@ -235,7 +249,6 @@ function setupGlobalEventListeners() {
       return;
     }
 
-    // Botón Personalizar Hamburguesa / Granjero
     const customItemBtn = e.target.closest('.btn-open-item-custom');
     if (customItemBtn) {
       const prodId = customItemBtn.dataset.prodId;
@@ -245,7 +258,6 @@ function setupGlobalEventListeners() {
       return;
     }
 
-    // Botón Agregar Directo
     const addDirectBtn = e.target.closest('.btn-add-direct');
     if (addDirectBtn) {
       const prodId = addDirectBtn.dataset.prodId;
@@ -264,22 +276,18 @@ function setupGlobalEventListeners() {
       return;
     }
 
-    // Botón Personalizar Pizza
     if (e.target.closest('#btn-open-pizza-custom')) {
       const category = MENU_DATA.find(c => c.id === currentCategory);
       if (category) openPizzaModal(category);
       return;
     }
 
-    // Cerrar Modal
     if (e.target.closest('#btn-close-pizza-modal')) {
       closeModal();
       return;
     }
 
-    // Guardar en Carrito desde la Modal
     if (e.target.closest('#btn-add-pizza-cart')) {
-      // Caso 1: Hamburguesas / Granjeros
       if (selectedProduct) {
         const removedToppings = [];
         document.querySelectorAll('input[name="base-topping"]:not(:checked)').forEach(el => removedToppings.push(el.dataset.name));
@@ -306,7 +314,6 @@ function setupGlobalEventListeners() {
         return;
       }
 
-      // Caso 2: Pizzas
       if (selectedPizzaCategory) {
         const sizeInput = document.querySelector('input[name="pizza-size"]:checked');
         const sizeName = sizeInput ? sizeInput.dataset.name : '';
