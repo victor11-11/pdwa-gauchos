@@ -5,9 +5,12 @@ import { cartState } from './state/cart.js';
 const RESTAURANT_WHATSAPP = '584120000000'; 
 
 let MENU_DATA = [];
+let ICE_CREAM_FLAVORS = [];
+let ICE_CREAM_TOPPINGS = [];
 let currentCategory = 'hamburguesas';
 let selectedProduct = null;
 let selectedPizzaCategory = null;
+let selectedIceCreamCategory = null;
 
 // Cargar datos desde la API del servidor
 async function initApp() {
@@ -16,6 +19,8 @@ async function initApp() {
     const data = await res.json();
     
     MENU_DATA = data.menu; 
+    ICE_CREAM_FLAVORS = data.iceCreamFlavors || [];
+    ICE_CREAM_TOPPINGS = data.iceCreamToppings || [];
 
     if (MENU_DATA.length > 0) {
       currentCategory = MENU_DATA[0].id;
@@ -64,7 +69,7 @@ function renderProducts(categoryId) {
       <div>
         <h3 style="margin:0 0 4px 0; font-size:18px; color:#333;">Pizza ${category.baseName}</h3>
         <p style="margin:0 0 8px 0; font-size:14px; color:#666;">Selecciona el tamaño e ingredientes adicionales.</p>
-        <strong style="color:#e53e3e;">Desde $${category.sizes[0].price.toFixed(2)}</strong>
+        <strong style="color:#e53e3e;">Desde $${category.sizes?.[0]?.price?.toFixed(2) || '0.00'}</strong>
       </div>
       <button id="btn-open-pizza-custom" style="background:#e53e3e; color:#fff; border:none; padding:10px 16px; border-radius:6px; cursor:pointer; font-weight:bold;">
         Personalizar
@@ -74,12 +79,31 @@ function renderProducts(categoryId) {
     return;
   }
 
-  // CASO B: Productos Personalizables vs Directos
+  // CASO B: Módulo de Helados (Sabores y Toppings)
+  if (category.isCustomIceCream) {
+    const products = category.products || [];
+    container.innerHTML = products.map(prod => `
+      <div style="background:#fff; padding:16px; border-radius:8px; border:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div>
+          <h3 style="margin:0 0 4px 0; font-size:18px; color:#333;">🍦 ${prod.name}</h3>
+          ${prod.description ? `<p style="margin:0 0 8px 0; font-size:13px; color:#666;">${prod.description}</p>` : ''}
+          <strong style="color:#e53e3e;">$${prod.price.toFixed(2)}</strong>
+        </div>
+        <button data-prod-id="${prod.id}" class="btn-open-icecream-custom" style="background:#d69e2e; color:#fff; border:none; padding:10px 16px; border-radius:6px; cursor:pointer; font-weight:bold;">
+          Elegir Sabores
+        </button>
+      </div>
+    `).join('');
+    return;
+  }
+
+  // CASO C: Productos Generales, Hamburguesas y Promociones
   const products = category.products || [];
   container.innerHTML = products.map(prod => `
     <div style="background:#fff; padding:16px; border-radius:8px; border:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-      <div>
+      <div style="flex:1; padding-right:12px;">
         <h3 style="margin:0 0 4px 0; font-size:18px; color:#333;">${prod.name}</h3>
+        ${prod.description ? `<p style="margin:0 0 8px 0; font-size:13px; color:#666;">${prod.description}</p>` : ''}
         <strong style="color:#e53e3e;">$${prod.price.toFixed(2)}</strong>
       </div>
       ${category.isCustomizable 
@@ -99,7 +123,7 @@ function openItemModal(product) {
   const titleEl = document.getElementById('modal-title');
   const descEl = document.getElementById('modal-desc');
   if (titleEl) titleEl.textContent = product.name;
-  if (descEl) descEl.textContent = 'Selecciona lo que incluye tu pedido y los extras opcionales.';
+  if (descEl) descEl.textContent = product.description || 'Selecciona lo que incluye tu pedido y los extras opcionales.';
 
   const sizesContainer = document.getElementById('modal-sizes');
   if (sizesContainer) {
@@ -156,7 +180,71 @@ function updateItemPrice() {
   }
 }
 
-// 4. MODAL DE PIZZAS
+// 4. MODAL DE HELADOS (SABORES Y TOPPINGS)
+function openIceCreamModal(product, category) {
+  selectedProduct = product;
+  selectedIceCreamCategory = category;
+  const modal = document.getElementById('pizza-modal');
+  if (!modal) return;
+
+  const titleEl = document.getElementById('modal-title');
+  const descEl = document.getElementById('modal-desc');
+  if (titleEl) titleEl.textContent = `🍦 ${product.name}`;
+  if (descEl) descEl.textContent = product.description || 'Selecciona tus sabores y toppings favoritos.';
+
+  const flavors = ICE_CREAM_FLAVORS.length > 0 ? ICE_CREAM_FLAVORS : [
+    { id: 'f1', name: 'Mantecado' },
+    { id: 'f2', name: 'Chocolate' },
+    { id: 'f3', name: 'Fresa' }
+  ];
+
+  const toppings = ICE_CREAM_TOPPINGS;
+
+  const sizesContainer = document.getElementById('modal-sizes');
+  if (sizesContainer) {
+    sizesContainer.innerHTML = `
+      <strong style="display:block; margin-bottom:8px; color:#333;">Sabores de Helado:</strong>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+        ${flavors.map(flv => `
+          <label style="font-size:14px; cursor:pointer;">
+            <input type="checkbox" name="icecream-flavor" value="${flv.id}" data-name="${flv.name}">
+            ${flv.name}
+          </label>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  const toppingsContainer = document.getElementById('modal-toppings');
+  if (toppingsContainer) {
+    toppingsContainer.innerHTML = `
+      <strong style="display:block; margin:12px 0 8px 0; color:#333;">Toppings Adicionales:</strong>
+      ${toppings.map(top => `
+        <label style="display:block; margin:6px 0; cursor:pointer; font-size:14px;">
+          <input type="checkbox" name="icecream-topping" value="${top.id}" data-price="${top.price}" data-name="${top.name}">
+          ${top.name} (+$${top.price.toFixed(2)})
+        </label>
+      `).join('')}
+    `;
+  }
+
+  updateIceCreamPrice();
+  modal.classList.remove('hidden');
+}
+
+function updateIceCreamPrice() {
+  if (!selectedProduct) return;
+  let total = selectedProduct.price;
+
+  document.querySelectorAll('input[name="icecream-topping"]:checked').forEach(extra => {
+    total += parseFloat(extra.dataset.price);
+  });
+
+  const totalElement = document.getElementById('modal-total');
+  if (totalElement) totalElement.textContent = `$${total.toFixed(2)}`;
+}
+
+// 5. MODAL DE PIZZAS
 function openPizzaModal(pizzaCategory) {
   selectedPizzaCategory = pizzaCategory;
   selectedProduct = null;
@@ -211,9 +299,10 @@ function closeModal() {
   }
   selectedPizzaCategory = null;
   selectedProduct = null;
+  selectedIceCreamCategory = null;
 }
 
-// 5. BOTÓN FAB DEL CARRITO Y COMANDA POS LATERAL
+// 6. BOTÓN FAB DEL CARRITO Y COMANDA POS LATERAL
 function updateCartBar() {
   const cartFab = document.getElementById('cart-fab');
   const cartBadge = document.getElementById('cart-badge');
@@ -250,6 +339,9 @@ function openCartModal() {
     container.innerHTML = items.map(item => {
       let customText = '';
       if (item.customizations) {
+        if (item.customizations.flavors?.length) {
+          customText += `<div style="font-size:0.75rem; color:#d69e2e; margin-top:2px;">🍦 Sabores: ${item.customizations.flavors.join(', ')}</div>`;
+        }
         if (item.customizations.removed?.length) {
           customText += `<div style="font-size:0.75rem; color:#dc2626; margin-top:2px;">❌ Sin: ${item.customizations.removed.join(', ')}</div>`;
         }
@@ -309,6 +401,7 @@ function sendWhatsAppOrder() {
   items.forEach(item => {
     message += `• ${item.quantity}x ${item.name} - $${(item.unitPrice * item.quantity).toFixed(2)}\n`;
     if (item.customizations) {
+      if (item.customizations.flavors?.length) message += `   └ 🍦 Sabores: ${item.customizations.flavors.join(', ')}\n`;
       if (item.customizations.removed?.length) message += `   └ ❌ Sin: ${item.customizations.removed.join(', ')}\n`;
       if (item.customizations.extras?.length) message += `   └ ➕ Extras: ${item.customizations.extras.map(e => e.name).join(', ')}\n`;
       if (item.customizations.size) message += `   └ 📐 Tamaño: ${item.customizations.size}\n`;
@@ -323,7 +416,7 @@ function sendWhatsAppOrder() {
   window.open(encodedUrl, '_blank');
 }
 
-// 6. EVENT DELEGATION
+// 7. DELEGACIÓN DE EVENTOS GLOBAL
 function setupGlobalEventListeners() {
   document.addEventListener('click', (e) => {
     const catBtn = e.target.closest('[data-category-id]');
@@ -340,6 +433,15 @@ function setupGlobalEventListeners() {
       const category = MENU_DATA.find(c => c.id === currentCategory);
       const product = category?.products?.find(p => p.id === prodId);
       if (product) openItemModal(product);
+      return;
+    }
+
+    const iceCreamBtn = e.target.closest('.btn-open-icecream-custom');
+    if (iceCreamBtn) {
+      const prodId = iceCreamBtn.dataset.prodId;
+      const category = MENU_DATA.find(c => c.id === currentCategory);
+      const product = category?.products?.find(p => p.id === prodId);
+      if (product) openIceCreamModal(product, category);
       return;
     }
 
@@ -398,7 +500,35 @@ function setupGlobalEventListeners() {
       return;
     }
 
+    // --- CONFIRMAR EN EL MODAL ---
     if (e.target.closest('#btn-add-pizza-cart')) {
+      // 1. Helados
+      if (selectedIceCreamCategory && selectedProduct) {
+        const selectedFlavors = [];
+        document.querySelectorAll('input[name="icecream-flavor"]:checked').forEach(el => selectedFlavors.push(el.dataset.name));
+
+        const extras = [];
+        let extraCost = 0;
+        document.querySelectorAll('input[name="icecream-topping"]:checked').forEach(el => {
+          const price = parseFloat(el.dataset.price);
+          extras.push({ id: el.value, name: el.dataset.name, price });
+          extraCost += price;
+        });
+
+        cartState.addItem({
+          id: `icecream-${selectedProduct.id}-${Date.now()}`,
+          name: selectedProduct.name,
+          unitPrice: selectedProduct.price + extraCost,
+          quantity: 1,
+          customizations: { flavors: selectedFlavors, extras }
+        });
+
+        closeModal();
+        updateCartBar();
+        return;
+      }
+
+      // 2. Hamburguesas / Granjeros
       if (selectedProduct) {
         const removedToppings = [];
         document.querySelectorAll('input[name="base-topping"]:not(:checked)').forEach(el => removedToppings.push(el.dataset.name));
@@ -425,6 +555,7 @@ function setupGlobalEventListeners() {
         return;
       }
 
+      // 3. Pizzas
       if (selectedPizzaCategory) {
         const sizeInput = document.querySelector('input[name="pizza-size"]:checked');
         const sizeName = sizeInput ? sizeInput.dataset.name : '';
@@ -455,6 +586,9 @@ function setupGlobalEventListeners() {
   document.addEventListener('change', (e) => {
     if (e.target.name === 'burger-extra') {
       updateItemPrice();
+    }
+    if (e.target.name === 'icecream-topping') {
+      updateIceCreamPrice();
     }
     if (e.target.name === 'pizza-size' || e.target.name === 'pizza-extra') {
       updatePizzaPrice();
