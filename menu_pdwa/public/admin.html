@@ -34,22 +34,92 @@
   <!-- PANEL DE GESTIÓN (OCULTO HASTA AUTENTICAR) -->
   <div id="admin-panel" class="card hidden">
     <div style="display: flex; justify-content: space-between; align-items: center;">
-      <h2>Gestión de Productos</h2>
+      <h2>Gestión de Productos y Promociones</h2>
       <button id="logout-btn" class="btn-danger" style="width: auto;">Cerrar Sesión</button>
     </div>
+
+    <form id="product-form" class="card" style="box-shadow: none; padding: 0;">
+      <input type="hidden" id="prod-id">
+      <label for="prod-category">Categoría</label>
+      <select id="prod-category" required></select>
+      <label for="prod-name">Nombre</label>
+      <input type="text" id="prod-name" required>
+      <label for="prod-price">Precio final ($)</label>
+      <input type="number" id="prod-price" min="0" step="0.01" required>
+      <label for="prod-description">Descripción</label>
+      <textarea id="prod-description" rows="3" style="width: 100%; margin-top: 10px; box-sizing: border-box;"></textarea>
+      <label for="prod-customization">Tipo de personalización</label>
+      <select id="prod-customization">
+        <option value="simple">Producto simple</option>
+        <option value="icecream">Helado: sabores y toppings</option>
+        <option value="pizza">Pizza: tamaño y adicionales</option>
+        <option value="promo_pizza">Promo de pizzas: adicionales gratis</option>
+      </select>
+      <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+        <input type="checkbox" id="prod-free-extras" style="width: auto; margin: 0;">
+        Incluir un adicional gratis por pizza
+      </label>
+      <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+        <input type="checkbox" id="prod-available" checked style="width: auto; margin: 0;">
+        Disponible para la venta
+      </label>
+      <div style="display: flex; gap: 8px;">
+        <button type="submit">Guardar producto</button>
+        <button type="button" id="cancel-edit-btn" class="btn-danger hidden">Cancelar</button>
+      </div>
+    </form>
 
     <!-- TABLA DE PRODUCTOS -->
     <table>
       <thead>
         <tr>
           <th>Producto</th>
+          <th>Categoría</th>
           <th>Precio ($)</th>
+          <th>Personalización</th>
           <th>Estado</th>
           <th>Acción</th>
         </tr>
       </thead>
       <tbody id="products-list"></tbody>
     </table>
+
+    <section class="card" style="margin-top: 24px; box-shadow: none; border: 1px solid #ddd;">
+      <h2>Extras, toppings y sabores</h2>
+      <form id="extra-form">
+        <input type="hidden" id="extra-id">
+        <label for="extra-type">Tipo</label>
+        <select id="extra-type" required>
+          <option value="pizza">Extra para pizza</option>
+          <option value="burger">Extra para hamburguesa</option>
+          <option value="icecream_flavor">Sabor de helado</option>
+          <option value="icecream_topping">Topping de helado</option>
+        </select>
+        <label for="extra-name">Nombre</label>
+        <input type="text" id="extra-name" required placeholder="Ej: Champiñones, Pistacho, Tocineta">
+        <label for="extra-price">Precio adicional ($)</label>
+        <input type="number" id="extra-price" min="0" step="0.01" value="0">
+        <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+          <input type="checkbox" id="extra-included" style="width: auto; margin: 0;">
+          Ingrediente incluido (vegetal de hamburguesa o sabor de helado)
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+          <input type="checkbox" id="extra-available" checked style="width: auto; margin: 0;">
+          Disponible para el cliente
+        </label>
+        <div style="display: flex; gap: 8px;">
+          <button type="submit">Guardar extra</button>
+          <button type="button" id="cancel-extra-btn" class="btn-danger hidden">Cancelar</button>
+        </div>
+      </form>
+
+      <table>
+        <thead>
+          <tr><th>Nombre</th><th>Tipo</th><th>Precio</th><th>Estado</th><th>Acción</th></tr>
+        </thead>
+        <tbody id="extras-list"></tbody>
+      </table>
+    </section>
   </div>
 
   <!-- En admin.html -->

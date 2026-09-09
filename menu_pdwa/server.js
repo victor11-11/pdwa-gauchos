@@ -36,7 +36,7 @@ app.get('/admin', (req, res) => {
 // ------------------------------------------------------------------
 // CONEXIÓN A BASE DE DATOS BETTER-SQLITE3
 // ------------------------------------------------------------------
-const db = new Database('./database.sqlite');
+const db = new Database(path.join(__dirname, 'database.sqlite'));
 console.log('⚡ Conectado a la base de datos SQLite.');
 
 // CREACIÓN Y ACTUALIZACIÓN DE TABLAS
@@ -64,6 +64,8 @@ db.exec(`
     price REAL NOT NULL,
     description TEXT,
     available INTEGER DEFAULT 1,
+    customization_type TEXT DEFAULT 'simple',
+    promo_free_extras INTEGER DEFAULT 0,
     FOREIGN KEY(category_id) REFERENCES categories(id)
   );
 
@@ -79,9 +81,59 @@ db.exec(`
     id TEXT PRIMARY KEY,
     type TEXT CHECK(type IN ('burger', 'pizza', 'icecream_topping', 'icecream_flavor')),
     name TEXT NOT NULL,
-    price REAL DEFAULT 0.00
+    price REAL DEFAULT 0.00,
+    available INTEGER DEFAULT 1,
+    included INTEGER DEFAULT 0
   );
 `);
+
+// Mantiene compatibles las bases de datos creadas antes de añadir la personalización.
+const productColumns = db.prepare(`PRAGMA table_info(products)`).all().map(column => column.name);
+if (!productColumns.includes('description')) {
+  db.exec(`ALTER TABLE products ADD COLUMN description TEXT`);
+}
+if (!productColumns.includes('available')) {
+  db.exec(`ALTER TABLE products ADD COLUMN available INTEGER DEFAULT 1`);
+}
+if (!productColumns.includes('customization_type')) {
+  db.exec(`ALTER TABLE products ADD COLUMN customization_type TEXT DEFAULT 'simple'`);
+}
+if (!productColumns.includes('promo_free_extras')) {
+  db.exec(`ALTER TABLE products ADD COLUMN promo_free_extras INTEGER DEFAULT 0`);
+}
+
+const categoryColumns = db.prepare(`PRAGMA table_info(categories)`).all().map(column => column.name);
+if (!categoryColumns.includes('isCustomizable')) db.exec(`ALTER TABLE categories ADD COLUMN isCustomizable INTEGER DEFAULT 0`);
+if (!categoryColumns.includes('isCustomPizza')) db.exec(`ALTER TABLE categories ADD COLUMN isCustomPizza INTEGER DEFAULT 0`);
+if (!categoryColumns.includes('isCustomIceCream')) db.exec(`ALTER TABLE categories ADD COLUMN isCustomIceCream INTEGER DEFAULT 0`);
+if (!categoryColumns.includes('baseName')) db.exec(`ALTER TABLE categories ADD COLUMN baseName TEXT`);
+if (!categoryColumns.includes('sort_order')) db.exec(`ALTER TABLE categories ADD COLUMN sort_order INTEGER DEFAULT 0`);
+
+const extraColumns = db.prepare(`PRAGMA table_info(extras)`).all().map(column => column.name);
+if (!extraColumns.includes('available')) db.exec(`ALTER TABLE extras ADD COLUMN available INTEGER DEFAULT 1`);
+if (!extraColumns.includes('included')) db.exec(`ALTER TABLE extras ADD COLUMN included INTEGER DEFAULT 0`);
+
+// SQLite no permite modificar un CHECK existente; reconstruimos tablas antiguas
+// que solo aceptaban burger y pizza para conservar sus datos y ampliar los tipos.
+const extrasSchema = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'extras'`).get()?.sql || '';
+if (!extrasSchema.includes('icecream_flavor')) {
+  db.exec(`
+    BEGIN;
+    ALTER TABLE extras RENAME TO extras_legacy;
+    CREATE TABLE extras (
+      id TEXT PRIMARY KEY,
+      type TEXT CHECK(type IN ('burger', 'pizza', 'icecream_topping', 'icecream_flavor')),
+      name TEXT NOT NULL,
+      price REAL DEFAULT 0.00,
+      available INTEGER DEFAULT 1,
+      included INTEGER DEFAULT 0
+    );
+    INSERT INTO extras (id, type, name, price, available, included)
+    SELECT id, type, name, price, available, included FROM extras_legacy;
+    DROP TABLE extras_legacy;
+    COMMIT;
+  `);
+}
 
 // USUARIO ADMIN Y SEED
 const userCheck = db.prepare(`SELECT * FROM users WHERE username = 'admin'`).get();
@@ -112,10 +164,10 @@ function seedDatabase() {
   ];
   cats.forEach(c => insertCategory.run(c));
 
-  const insertProduct = db.prepare(`INSERT INTO products (id, category_id, name, price, description, available) VALUES (?,?,?,?,?,?)`);
+  const insertProduct = db.prepare(`INSERT INTO products (id, category_id, name, price, description, available, customization_type, promo_free_extras) VALUES (?,?,?,?,?,?,?,?)`);
   const prods = [
-    ['promo1', 'promos', 'Combo Pareja (2 Burgers Res + Refresco 1L)', 13.50, 'Incluye 2 hamburguesas de res sencillas y refresco de 1 litro.', 1],
-    ['promo2', 'promos', 'Mega Pizza + Tequeños', 15.00, 'Pizza grande de 1 ingrediente + ración de 5 tequeños.', 1],
+    ['promo1', 'promos', 'Combo Pareja (2 Burgers Res + Refresco 1L)', 13.50, 'Incluye 2 hamburguesas de res sencillas y refresco de 1 litro.', 1, 'simple', 0],
+    ['promo2', 'promos', 'Mega Pizza + Tequeños', 15.00, 'Pizza grande de 1 ingrediente + ración de 5 tequeños.', 1, 'promo_pizza', 1],
     ['h1', 'hamburguesas', 'Res', 6.50, null, 1],
     ['h2', 'hamburguesas', 'Pollo Crispy', 7.00, null, 1],
     ['h3', 'hamburguesas', 'Gaucho', 8.00, null, 1],
@@ -136,11 +188,12 @@ function seedDatabase() {
     ['e6', 'entradas', 'Tenders de Pollo', 6.50, null, 1],
     ['ens1', 'ensaladas', 'César', 6.00, null, 1],
     ['ens2', 'ensaladas', 'D\'Roma', 7.00, null, 1],
-    ['ice1', 'helados', 'Tinita', 2.00, 'Tinita tradicional de 1 bola con sirope.', 1],
-    ['ice2', 'helados', 'Barquilla', 2.50, 'Barquilla crocante con 1 bola a elección.', 1],
-    ['ice3', 'helados', 'Tina 8 oz', 4.00, 'Tina individual de 8oz (hasta 2 sabores).', 1],
-    ['ice4', 'helados', 'Tina 16 oz (Medio Litro)', 7.50, 'Tina familiar de 16oz (hasta 3 sabores).', 1],
-    ['ice5', 'helados', 'Tina 32 oz (Un Litro)', 13.00, 'Tina de 1 litro ideal para compartir.', 1],
+    ['ice1', 'helados', 'Tinita', 2.00, 'Tinita tradicional de 1 bola con sirope.', 1, 'icecream', 0],
+    ['ice2', 'helados', 'Barquilla', 2.50, 'Barquilla crocante con 1 bola a elección.', 1, 'icecream', 0],
+    ['ice3', 'helados', 'Tina 8 oz', 4.00, 'Tina individual de 8oz (hasta 2 sabores).', 1, 'icecream', 0],
+    ['ice4', 'helados', 'Tina 16 oz', 7.50, 'Tina familiar de 16oz (hasta 3 sabores).', 1, 'icecream', 0],
+    ['ice5', 'helados', 'Tina 36 oz', 13.00, 'Tina familiar grande de 36oz.', 1, 'icecream', 0],
+    ['ice6', 'helados', 'Brownie con helado', 6.50, 'Brownie caliente acompañado con helado.', 1, 'icecream', 0],
     ['b1', 'bebidas', 'Refresco de Lata', 1.50, null, 1],
     ['b2', 'bebidas', 'Refresco Botella 300ml', 1.25, null, 1],
     ['b3', 'bebidas', 'Refresco 1L', 2.50, null, 1],
@@ -149,13 +202,13 @@ function seedDatabase() {
     ['b6', 'bebidas', 'Jugos Naturales', 2.00, null, 1],
     ['b7', 'bebidas', 'Agua Mineral', 1.00, null, 1]
   ];
-  prods.forEach(p => insertProduct.run(p));
+  prods.forEach(p => insertProduct.run(...(p.length >= 8 ? p : [...p, 'simple', 0])));
 
   const insertSize = db.prepare(`INSERT INTO pizza_sizes VALUES (?,?,?,?)`);
   insertSize.run(['mediana', 'pizzas', 'Mediana', 8.00]);
   insertSize.run(['grande', 'pizzas', 'Grande', 12.00]);
 
-  const insertExtra = db.prepare(`INSERT INTO extras VALUES (?,?,?,?)`);
+  const insertExtra = db.prepare(`INSERT INTO extras (id, type, name, price, available, included) VALUES (?,?,?,?,1,?)`);
   const extrasList = [
     ['tocineta', 'burger', 'Tocineta', 1.50],
     ['queso', 'burger', 'Queso Extra', 1.00],
@@ -173,8 +226,37 @@ function seedDatabase() {
     ['t_sirope_choc', 'icecream_topping', 'Sirope de Chocolate', 0.25],
     ['t_sirope_fresa', 'icecream_topping', 'Sirope de Fresa', 0.25]
   ];
-  extrasList.forEach(ex => insertExtra.run(ex));
+  extrasList.forEach(ex => insertExtra.run(...ex, ex[1] === 'icecream_flavor' ? 1 : 0));
 }
+
+// Completa presentaciones nuevas cuando la base ya existía antes de esta versión.
+const ensureCategory = db.prepare(`
+  INSERT OR IGNORE INTO categories (id, name, isCustomizable, isCustomPizza, isCustomIceCream, baseName, sort_order)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+ensureCategory.run('promos', 'Promociones', 0, 0, 0, null, 1);
+ensureCategory.run('pizzas', 'Pizzas', 0, 1, 0, 'Margarita', 6);
+ensureCategory.run('helados', 'Helados', 0, 0, 1, 'Helados Gourmet', 7);
+
+const ensurePizzaSize = db.prepare(`INSERT OR IGNORE INTO pizza_sizes (id, category_id, name, price) VALUES (?, ?, ?, ?)`);
+ensurePizzaSize.run('mediana', 'pizzas', 'Mediana', 8.00);
+ensurePizzaSize.run('grande', 'pizzas', 'Grande', 12.00);
+
+const ensureExtra = db.prepare(`INSERT OR IGNORE INTO extras (id, type, name, price) VALUES (?, ?, ?, ?)`);
+ensureExtra.run('jamon', 'pizza', 'Jamón', 1.50);
+ensureExtra.run('maiz', 'pizza', 'Maíz', 1.00);
+ensureExtra.run('tocino', 'pizza', 'Tocino', 2.00);
+ensureExtra.run('extra_queso', 'pizza', 'Extra Queso', 2.00);
+
+const insertMissingProduct = db.prepare(`
+  INSERT OR IGNORE INTO products (id, category_id, name, price, description, available, customization_type, promo_free_extras)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
+insertMissingProduct.run('ice5', 'helados', 'Tina 36 oz', 13.00, 'Tina familiar grande de 36oz.', 1, 'icecream', 0);
+insertMissingProduct.run('ice6', 'helados', 'Brownie con helado', 6.50, 'Brownie caliente acompañado con helado.', 1, 'icecream', 0);
+db.prepare(`UPDATE products SET customization_type = 'icecream' WHERE category_id = 'helados' AND (customization_type IS NULL OR customization_type = 'simple')`).run();
+db.prepare(`UPDATE products SET customization_type = 'promo_pizza', promo_free_extras = 1 WHERE id = 'promo2'`).run();
+db.prepare(`UPDATE extras SET included = 1, price = 0 WHERE type = 'icecream_flavor'`).run();
 
 // MIDDLEWARE AUTENTICACIÓN ADMIN
 function authenticateToken(req, res, next) {
@@ -195,7 +277,7 @@ app.get('/api/menu', (req, res) => {
     const categories = db.prepare(`SELECT * FROM categories ORDER BY sort_order ASC`).all();
     const products = db.prepare(`SELECT * FROM products WHERE available = 1`).all();
     const sizes = db.prepare(`SELECT * FROM pizza_sizes`).all();
-    const extras = db.prepare(`SELECT * FROM extras`).all();
+    const extras = db.prepare(`SELECT * FROM extras WHERE available = 1`).all();
 
     const fullMenu = categories.map(cat => {
       const categoryData = {
@@ -211,7 +293,10 @@ app.get('/api/menu', (req, res) => {
         categoryData.sizes = sizes.filter(s => s.category_id === cat.id);
         categoryData.extras = extras.filter(e => e.type === 'pizza');
       } else {
-        categoryData.products = products.filter(p => p.category_id === cat.id);
+        categoryData.products = products.filter(p => p.category_id === cat.id).map(product => ({
+          ...product,
+          promo_free_extras: Boolean(product.promo_free_extras)
+        }));
       }
 
       return categoryData;
@@ -291,19 +376,65 @@ app.get('/api/admin/products', authenticateToken, (req, res) => {
   }
 });
 
+// Obtener el catálogo completo de extras, incluyendo agotados.
+app.get('/api/admin/extras', authenticateToken, (req, res) => {
+  try {
+    const rows = db.prepare(`SELECT * FROM extras ORDER BY type ASC, name ASC`).all();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Crear o actualizar un extra, sabor o topping.
+app.post('/api/admin/extras', authenticateToken, (req, res) => {
+  const { id, type, name, price, available, included } = req.body;
+  const extraId = id || `${type}_${Date.now()}`;
+  const validTypes = ['burger', 'pizza', 'icecream_topping', 'icecream_flavor'];
+  if (!validTypes.includes(type) || !name?.trim()) {
+    return res.status(400).json({ error: 'Tipo y nombre de extra son obligatorios' });
+  }
+
+  try {
+    const isIncluded = type === 'icecream_flavor' || Boolean(included);
+    const finalPrice = isIncluded ? 0 : (parseFloat(price) || 0);
+    const stmt = db.prepare(`
+      INSERT INTO extras (id, type, name, price, available, included)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+      type=excluded.type, name=excluded.name, price=excluded.price, available=excluded.available, included=excluded.included
+    `);
+    stmt.run(extraId, type, name.trim(), finalPrice, available ? 1 : 0, isIncluded ? 1 : 0);
+    res.json({ message: 'Extra guardado con éxito', id: extraId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Marcar un extra como disponible o agotado sin borrarlo.
+app.patch('/api/admin/extras/:id/toggle', authenticateToken, (req, res) => {
+  try {
+    db.prepare(`UPDATE extras SET available = ? WHERE id = ?`).run(req.body.available ? 1 : 0, req.params.id);
+    res.json({ message: 'Disponibilidad del extra actualizada' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Crear o actualizar un producto
 app.post('/api/admin/products', authenticateToken, (req, res) => {
-  const { id, category_id, name, price, description, available } = req.body;
+  const { id, category_id, name, price, description, available, customization_type, promo_free_extras } = req.body;
   const prodId = id || `prod_${Date.now()}`;
 
   try {
     const stmt = db.prepare(`
-      INSERT INTO products (id, category_id, name, price, description, available) 
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO products (id, category_id, name, price, description, available, customization_type, promo_free_extras) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET 
-      category_id=excluded.category_id, name=excluded.name, price=excluded.price, description=excluded.description, available=excluded.available
+      category_id=excluded.category_id, name=excluded.name, price=excluded.price, description=excluded.description,
+      available=excluded.available, customization_type=excluded.customization_type, promo_free_extras=excluded.promo_free_extras
     `);
-    stmt.run(prodId, category_id, name, parseFloat(price), description || null, available ? 1 : 0);
+    stmt.run(prodId, category_id, name, parseFloat(price), description || null, available ? 1 : 0, customization_type || 'simple', promo_free_extras ? 1 : 0);
     res.json({ message: 'Producto guardado con éxito', id: prodId });
   } catch (err) {
     res.status(500).json({ error: err.message });
