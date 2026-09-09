@@ -1,43 +1,57 @@
+const CART_STORAGE_KEY = 'menu_cart_data';
+
 class CartState {
   constructor() {
-    this.items = [];
+    this.items = this.loadCart();
   }
 
-  addItem(item) {
-    // Para items simples o pizzas configuradas
-    this.items.push(item);
-    this.notify();
+  loadCart() {
+    try {
+      const data = localStorage.getItem(CART_STORAGE_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      console.error('Error al cargar el carrito desde localStorage:', e);
+      return [];
+    }
   }
 
-  removeItem(index) {
-    this.items.splice(index, 1);
-    this.notify();
-  }
-
-  getTotal() {
-    return this.items.reduce((sum, item) => sum + item.price, 0);
+  saveCart() {
+    try {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(this.items));
+    } catch (e) {
+      console.error('Error al guardar el carrito:', e);
+    }
   }
 
   getItems() {
-    return this.items;
+    return this.items || [];
   }
 
-  notify() {
-    const totalEl = document.getElementById("cart-total");
-    const countEl = document.getElementById("cart-count");
-    const barEl = document.getElementById("cart-bar");
-
-    if (totalEl) totalEl.textContent = `$${this.getTotal().toFixed(2)}`;
-    if (countEl) countEl.textContent = `${this.items.length} items`;
-    
-    if (barEl) {
-      if (this.items.length > 0) {
-        barEl.classList.remove("hidden");
-      } else {
-        barEl.classList.add("hidden");
-      }
+  addItem(item) {
+    if (!Array.isArray(this.items)) {
+      this.items = [];
     }
+
+    // Si es un producto simple (sin personalizaciones), agrupamos la cantidad
+    if (!item.customizations) {
+      const existing = this.items.find(i => i.id === item.id && !i.customizations);
+      if (existing) {
+        existing.quantity += item.quantity || 1;
+      } else {
+        this.items.push(item);
+      }
+    } else {
+      // Si tiene personalizaciones (pizza), entra como ítem nuevo
+      this.items.push(item);
+    }
+
+    this.saveCart();
+  }
+
+  clearCart() {
+    this.items = [];
+    this.saveCart();
   }
 }
 
-export const cart = new CartState();
+export const cartState = new CartState();
