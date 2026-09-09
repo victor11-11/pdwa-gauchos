@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Menú Digital & Pedidos</title>
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <header class="header">
+    <h1>Menú Digital</h1>
+  </header>
+
+  <main id="app">
+    <!-- Navegación por Categorías -->
+    <nav id="category-nav" class="category-nav"></nav>
+
+    <!-- Contenedor de Productos -->
+    <section id="product-list" class="product-list"></section>
+  </main>
+
+  <!-- Botón Flotante del Carrito -->
+  <div id="cart-bar" class="cart-bar hidden">
+    <span id="cart-count">0 items</span>
+    <button id="checkout-btn">Ver Pedido (<span id="cart-total">$0.00</span>)</button>
+  </div>
+
+  <!-- Carga de módulos ES6 -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
