@@ -41,10 +41,29 @@ class CartState {
         this.items.push(item);
       }
     } else {
-      // Si tiene personalizaciones (pizza), entra como ítem nuevo
+      // Si tiene personalizaciones (pizza/hamburguesa personalizada), entra como ítem nuevo
       this.items.push(item);
     }
 
+    this.saveCart();
+  }
+
+  // --- NUEVOS MÉTODOS PARA EL MANEJO DEL CARRITO ---
+
+  updateQuantity(id, delta) {
+    const item = this.items.find(i => i.id === id);
+    if (item) {
+      item.quantity += delta;
+      if (item.quantity <= 0) {
+        this.removeItem(id);
+        return;
+      }
+      this.saveCart();
+    }
+  }
+
+  removeItem(id) {
+    this.items = this.items.filter(i => i.id !== id);
     this.saveCart();
   }
 

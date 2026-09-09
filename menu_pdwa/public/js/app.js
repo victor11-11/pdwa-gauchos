@@ -1,7 +1,9 @@
 import { BASE_TOPPINGS, BASE_SAUCES, BURGER_EXTRAS } from './data/menu.js';
 import { cartState } from './state/cart.js';
 
-// Reemplazamos la constante fija por una variable dinámica
+// Configura el número de teléfono del restaurante para WhatsApp (Formato internacional sin +)
+const RESTAURANT_WHATSAPP = '584120000000'; 
+
 let MENU_DATA = [];
 let currentCategory = 'hamburguesas';
 let selectedProduct = null;
@@ -13,7 +15,6 @@ async function initApp() {
     const res = await fetch('/api/menu', { cache: 'no-store' });
     const data = await res.json();
     
-    // Asignamos la carta obtenida directamente desde SQLite
     MENU_DATA = data.menu; 
 
     if (MENU_DATA.length > 0) {
@@ -73,7 +74,7 @@ function renderProducts(categoryId) {
     return;
   }
 
-  // CASO B: Productos Personalizables vs Directos (Filtra de forma segura los activos)
+  // CASO B: Productos Personalizables vs Directos
   const products = category.products || [];
   container.innerHTML = products.map(prod => `
     <div style="background:#fff; padding:16px; border-radius:8px; border:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
@@ -138,7 +139,6 @@ function openItemModal(product) {
   }
 
   updateItemPrice();
-  modal.style.display = 'flex';
   modal.classList.remove('hidden');
 }
 
@@ -189,7 +189,6 @@ function openPizzaModal(pizzaCategory) {
   }
 
   updatePizzaPrice();
-  modal.style.display = 'flex';
   modal.classList.remove('hidden');
 }
 
@@ -208,34 +207,120 @@ function updatePizzaPrice() {
 function closeModal() {
   const modal = document.getElementById('pizza-modal');
   if (modal) {
-    modal.style.display = 'none';
     modal.classList.add('hidden');
   }
   selectedPizzaCategory = null;
   selectedProduct = null;
 }
 
-// 5. BARRA DEL CARRITO
+// 5. BOTÓN FAB DEL CARRITO Y COMANDA POS LATERAL
 function updateCartBar() {
-  const cartBar = document.getElementById('cart-bar');
-  const cartCount = document.getElementById('cart-count');
-  const cartTotal = document.getElementById('cart-total');
+  const cartFab = document.getElementById('cart-fab');
+  const cartBadge = document.getElementById('cart-badge');
 
-  if (!cartBar) return;
+  if (!cartFab) return;
 
   const items = cartState.getItems();
   const count = items.reduce((sum, i) => sum + i.quantity, 0);
-  const total = items.reduce((sum, i) => sum + (i.unitPrice * i.quantity), 0);
 
   if (count > 0) {
-    cartBar.style.display = 'flex';
-    cartBar.classList.remove('hidden');
-    if (cartCount) cartCount.textContent = `${count} item${count > 1 ? 's' : ''}`;
-    if (cartTotal) cartTotal.textContent = `$${total.toFixed(2)}`;
+    cartFab.classList.remove('hidden');
+    if (cartBadge) cartBadge.textContent = count;
   } else {
-    cartBar.style.display = 'none';
-    cartBar.classList.add('hidden');
+    cartFab.classList.add('hidden');
+    closeCartModal();
   }
+}
+
+function openCartModal() {
+  const modal = document.getElementById('cart-modal');
+  const container = document.getElementById('cart-items-container');
+  const totalEl = document.getElementById('cart-modal-total');
+  const itemsCountEl = document.getElementById('pos-items-count');
+
+  const items = cartState.getItems();
+  if (items.length === 0) return;
+
+  const count = items.reduce((sum, i) => sum + i.quantity, 0);
+  if (itemsCountEl) {
+    itemsCountEl.textContent = `${count} producto${count > 1 ? 's' : ''} seleccionado${count > 1 ? 's' : ''}`;
+  }
+
+  if (container) {
+    container.innerHTML = items.map(item => {
+      let customText = '';
+      if (item.customizations) {
+        if (item.customizations.removed?.length) {
+          customText += `<div style="font-size:0.75rem; color:#dc2626; margin-top:2px;">❌ Sin: ${item.customizations.removed.join(', ')}</div>`;
+        }
+        if (item.customizations.extras?.length) {
+          customText += `<div style="font-size:0.75rem; color:#16a34a; margin-top:2px;">➕ Extra: ${item.customizations.extras.map(e => e.name).join(', ')}</div>`;
+        }
+        if (item.customizations.size) {
+          customText += `<div style="font-size:0.75rem; color:#4b5563; margin-top:2px;">📐 Tamaño: ${item.customizations.size}</div>`;
+        }
+      }
+
+      return `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:10px; border-bottom:1px dashed #cbd5e0;">
+          <div style="flex:1; padding-right:8px;">
+            <strong style="color:#1a202c; font-size:0.9rem;">${item.name}</strong>
+            ${customText}
+            <div style="font-weight:bold; color:#e53e3e; margin-top:4px; font-size:0.88rem;">$${(item.unitPrice * item.quantity).toFixed(2)}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <button class="btn-cart-qty" data-id="${item.id}" data-action="sub" style="width:26px; height:26px; border:1px solid #cbd5e0; background:#fff; border-radius:4px; font-weight:bold; cursor:pointer;">-</button>
+            <span style="font-weight:bold; font-size:0.9rem; min-width:18px; text-align:center;">${item.quantity}</span>
+            <button class="btn-cart-qty" data-id="${item.id}" data-action="add" style="width:26px; height:26px; border:1px solid #cbd5e0; background:#fff; border-radius:4px; font-weight:bold; cursor:pointer;">+</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  const total = items.reduce((sum, i) => sum + (i.unitPrice * i.quantity), 0);
+  if (totalEl) totalEl.textContent = `$${total.toFixed(2)}`;
+
+  if (modal) {
+    modal.classList.remove('hidden');
+  }
+}
+
+function closeCartModal() {
+  const modal = document.getElementById('cart-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+  }
+}
+
+function sendWhatsAppOrder() {
+  const items = cartState.getItems();
+  if (items.length === 0) return;
+
+  const table = document.getElementById('order-table')?.value.trim() || 'No especificada';
+  const orderType = document.getElementById('order-type')?.value || 'Comer Aquí';
+  const notes = document.getElementById('order-notes')?.value.trim() || 'Ninguna';
+
+  let message = `*--- NUEVA COMANDA POS ---*\n`;
+  message += `📌 *Tipo de Orden:* ${orderType}\n`;
+  message += `📍 *Ubicación/Mesa:* ${table}\n\n`;
+  message += `*Detalle del Pedido:*\n`;
+
+  items.forEach(item => {
+    message += `• ${item.quantity}x ${item.name} - $${(item.unitPrice * item.quantity).toFixed(2)}\n`;
+    if (item.customizations) {
+      if (item.customizations.removed?.length) message += `   └ ❌ Sin: ${item.customizations.removed.join(', ')}\n`;
+      if (item.customizations.extras?.length) message += `   └ ➕ Extras: ${item.customizations.extras.map(e => e.name).join(', ')}\n`;
+      if (item.customizations.size) message += `   └ 📐 Tamaño: ${item.customizations.size}\n`;
+    }
+  });
+
+  const total = items.reduce((sum, i) => sum + (i.unitPrice * i.quantity), 0);
+  message += `\n📝 *Notas:* ${notes}\n`;
+  message += `💰 *TOTAL A PAGAR:* $${total.toFixed(2)}`;
+
+  const encodedUrl = `https://wa.me/${RESTAURANT_WHATSAPP}?text=${encodeURIComponent(message)}`;
+  window.open(encodedUrl, '_blank');
 }
 
 // 6. EVENT DELEGATION
@@ -284,6 +369,32 @@ function setupGlobalEventListeners() {
 
     if (e.target.closest('#btn-close-pizza-modal')) {
       closeModal();
+      return;
+    }
+
+    // --- EVENTOS DEL CARRITO Y FAB ---
+    if (e.target.closest('#cart-fab')) {
+      openCartModal();
+      return;
+    }
+
+    if (e.target.closest('#btn-close-cart-modal')) {
+      closeCartModal();
+      return;
+    }
+
+    const qtyBtn = e.target.closest('.btn-cart-qty');
+    if (qtyBtn) {
+      const id = qtyBtn.dataset.id;
+      const action = qtyBtn.dataset.action;
+      cartState.updateQuantity(id, action === 'add' ? 1 : -1);
+      openCartModal();
+      updateCartBar();
+      return;
+    }
+
+    if (e.target.closest('#btn-send-whatsapp')) {
+      sendWhatsAppOrder();
       return;
     }
 
