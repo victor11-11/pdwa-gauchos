@@ -39,6 +39,21 @@ const catCustomCheck = document.getElementById('cat-customizable');
 const catIceCreamCheck = document.getElementById('cat-icecream');
 const productSearch = document.getElementById('product-search');
 const productCount = document.getElementById('product-count');
+const adminUserForm = document.getElementById('admin-user-form');
+const adminUserId = document.getElementById('admin-user-id');
+const adminUsername = document.getElementById('admin-username');
+const adminPassword = document.getElementById('admin-password');
+const adminRole = document.getElementById('admin-role');
+const adminActive = document.getElementById('admin-active');
+const adminUsersList = document.getElementById('admin-users-list');
+const cancelAdminEdit = document.getElementById('cancel-admin-edit');
+const dailySalesTotal = document.getElementById('daily-sales-total');
+const dailySalesMeta = document.getElementById('daily-sales-meta');
+const occupiedTablesValue = document.getElementById('occupied-tables-value');
+const occupiedTablesMeta = document.getElementById('occupied-tables-meta');
+const averageTicketValue = document.getElementById('average-ticket-value');
+const averageTicketMeta = document.getElementById('average-ticket-meta');
+const dailyOrdersList = document.getElementById('daily-orders-list');
 
 // Inicialización
 if (token) {
@@ -58,6 +73,33 @@ function showPanel() {
   loadCategories();
   loadProducts();
   loadExtras();
+  loadAdminUsers();
+  loadDashboard();
+}
+
+async function loadDashboard() {
+  try {
+    const res = await fetch(`${API_URL}/admin/dashboard`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const summary = await readApiJson(res);
+    if (!res.ok) throw new Error(summary.error || 'No se pudo cargar el resumen diario');
+    const total = Number(summary.total) || 0;
+    const orders = Number(summary.orders) || 0;
+    const tables = Number(summary.tables_served) || 0;
+    const average = Number(summary.average_ticket) || 0;
+    if (dailySalesTotal) dailySalesTotal.textContent = `$${total.toFixed(2)}`;
+    if (dailySalesMeta) dailySalesMeta.textContent = `${orders} pedido${orders === 1 ? '' : 's'} · ${tables} mesa${tables === 1 ? '' : 's'} atendida${tables === 1 ? '' : 's'}`;
+    if (occupiedTablesValue) occupiedTablesValue.textContent = tables;
+    if (occupiedTablesMeta) occupiedTablesMeta.textContent = `${Math.max(24 - tables, 0)} libres · 0 reservas`;
+    if (averageTicketValue) averageTicketValue.textContent = `$${average.toFixed(2)}`;
+    if (averageTicketMeta) averageTicketMeta.textContent = orders ? 'Promedio de ventas de hoy' : 'Sin ventas registradas hoy';
+    if (dailyOrdersList && orders) {
+      dailyOrdersList.innerHTML = `<tr><td>Hoy</td><td>${orders} venta${orders === 1 ? '' : 's'} registradas</td><td>Actual</td><td>$${total.toFixed(2)}</td><td><span class="status-pill available">Cerradas</span></td></tr>`;
+    }
+  } catch (err) {
+    console.error('Error al cargar resumen diario:', err);
+  }
 }
 
 const extraTypeLabels = {
@@ -72,6 +114,122 @@ document.querySelectorAll('.dashboard-tab').forEach(tab => {
     document.querySelectorAll('.dashboard-tab').forEach(item => item.classList.toggle('is-active', item === tab));
     document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('is-active', panel.dataset.panel === tab.dataset.tab));
   });
+});
+
+function showNotice(message, type = 'success') {
+  let notice = document.getElementById('admin-notice');
+  if (!notice) {
+    notice = document.createElement('div');
+    notice.id = 'admin-notice';
+    notice.style.cssText = 'position:fixed;right:24px;bottom:24px;z-index:20;padding:14px 18px;border-radius:12px;background:#1f2937;color:#fff;box-shadow:0 12px 28px rgba(17,24,39,.2);font-weight:700;transition:opacity .2s ease;';
+    document.body.appendChild(notice);
+  }
+  notice.textContent = message;
+  notice.style.background = type === 'error' ? '#b4233a' : '#176b46';
+  notice.style.opacity = '1';
+  clearTimeout(showNotice.timeout);
+  showNotice.timeout = setTimeout(() => { notice.style.opacity = '0'; }, 2600);
+}
+
+function activateView(view) {
+  document.querySelectorAll('[data-view]:not(.nav-item)').forEach(section => {
+    section.classList.toggle('admin-view-hidden', section.dataset.view !== view);
+  });
+  document.querySelectorAll('.nav-item[data-view]').forEach(navItem => {
+    navItem.classList.toggle('active', navItem.dataset.view === view);
+  });
+  const dashboardGrid = document.querySelector('.dashboard-grid');
+  if (dashboardGrid) dashboardGrid.classList.toggle('admin-view-hidden', !['pos', 'reports'].includes(view));
+}
+
+document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+  item.addEventListener('click', () => {
+    activateView(item.dataset.view);
+  });
+});
+
+activateView('dashboard');
+
+document.querySelectorAll('.table-action').forEach(button => {
+  button.addEventListener('click', () => {
+    const card = button.closest('.table-status-card');
+    const table = card.dataset.table;
+    if (card.dataset.status === 'available') {
+      card.dataset.status = 'occupied';
+      card.querySelector('.status-pill').className = 'status-pill unavailable';
+      card.querySelector('.status-pill').textContent = 'Ocupada';
+      card.querySelector('p').textContent = 'Cuenta activa · $0.00';
+      button.textContent = 'Ver cuenta';
+      showNotice(`Cuenta abierta en la mesa ${table}.`);
+    } else {
+      showNotice(`Mostrando la cuenta de la mesa ${table}.`);
+    }
+  });
+});
+
+const globalSearch = document.getElementById('global-search');
+if (globalSearch) {
+  globalSearch.addEventListener('input', () => {
+    const query = globalSearch.value.trim().toLowerCase();
+    if (productSearch) {
+      productSearch.value = query;
+      filterProducts();
+    }
+    const hasResults = [...document.querySelectorAll('.data-table tbody tr')]
+      .some(row => row.textContent.toLowerCase().includes(query));
+    if (query && !hasResults) showNotice('No se encontraron coincidencias.', 'error');
+  });
+}
+
+const currencyToggle = document.getElementById('currency-toggle');
+if (currencyToggle) {
+  currencyToggle.addEventListener('click', () => {
+    const isUsd = currencyToggle.dataset.currency !== 'bs';
+    currencyToggle.dataset.currency = isUsd ? 'bs' : 'usd';
+    currencyToggle.innerHTML = isUsd
+      ? '<span>BS</span><span class="currency-divider">/</span><span class="muted">USD</span>'
+      : '<span>USD</span><span class="currency-divider">/</span><span class="muted">BS</span>';
+    showNotice(`Moneda principal: ${isUsd ? 'BS' : 'USD'}.`);
+  });
+}
+
+const newSaleButton = document.getElementById('new-sale-btn');
+if (newSaleButton) newSaleButton.addEventListener('click', () => {
+  document.getElementById('pos-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  showNotice('Nueva venta lista para registrar.');
+});
+
+const reportsButton = document.getElementById('reports-btn');
+if (reportsButton) reportsButton.addEventListener('click', () => {
+  document.getElementById('reports-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  showNotice('Mostrando actividad reciente de ventas.');
+});
+
+const saveSaleButton = document.getElementById('save-sale-btn');
+if (saveSaleButton) saveSaleButton.addEventListener('click', () => {
+  localStorage.setItem('draft_sale', JSON.stringify({ savedAt: new Date().toISOString(), total: 150 }));
+  showNotice('Venta guardada como borrador.');
+});
+
+const chargeSaleButton = document.getElementById('charge-sale-btn');
+if (chargeSaleButton) chargeSaleButton.addEventListener('click', () => {
+  const confirmCharge = JSON.parse(localStorage.getItem('admin_preferences') || '{}').confirmCharge !== false;
+  if (confirmCharge && !confirm('¿Confirmar el cobro de $150.00?')) return;
+  fetch(`${API_URL}/admin/sales`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ total: 150, tablesServed: 1 })
+  })
+    .then(readApiJson)
+    .then(data => {
+      if (data.error) throw new Error(data.error);
+      localStorage.removeItem('draft_sale');
+      chargeSaleButton.disabled = true;
+      chargeSaleButton.textContent = 'Cobrado';
+      loadDashboard();
+      showNotice('Cobro registrado correctamente.');
+    })
+    .catch(err => showNotice(err.message, 'error'));
 });
 
 // Login
@@ -364,6 +522,113 @@ if (categoryForm) {
     }
   });
 }
+
+const roleLabels = { admin: 'Administrador', manager: 'Gerente', cashier: 'Caja' };
+
+async function loadAdminUsers() {
+  if (!adminUsersList) return;
+  try {
+    const res = await fetch(`${API_URL}/admin/users`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const users = await readApiJson(res);
+    if (!res.ok) throw new Error(users.error || 'No se pudieron cargar los administradores');
+    adminUsersList.innerHTML = users.map(user => `
+      <tr>
+        <td><strong>${escapeHtml(user.username)}</strong></td>
+        <td>${roleLabels[user.role] || escapeHtml(user.role)}</td>
+        <td><span class="status-pill ${user.active ? 'available' : 'unavailable'}">${user.active ? 'Activo' : 'Inactivo'}</span></td>
+        <td>${user.created_at ? new Date(user.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('es-VE') : '-'}</td>
+        <td style="display:flex;gap:5px;">
+          <button title="Editar" onclick="editAdminUser(${user.id}, '${escapeHtml(user.username)}', '${user.role}', ${Boolean(user.active)})">✏️</button>
+          <button title="Eliminar" onclick="deleteAdminUser(${user.id}, '${escapeHtml(user.username)}')">🗑️</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    showNotice(err.message, 'error');
+  }
+}
+
+if (adminUserForm) {
+  adminUserForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    const payload = {
+      id: adminUserId.value || null,
+      username: adminUsername.value,
+      password: adminPassword.value,
+      role: adminRole.value,
+      active: adminActive.checked
+    };
+    try {
+      const res = await fetch(`${API_URL}/admin/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+      const data = await readApiJson(res);
+      if (!res.ok) throw new Error(data.error || 'No se pudo guardar el administrador');
+      resetAdminForm();
+      loadAdminUsers();
+      showNotice('Administrador guardado correctamente.');
+    } catch (err) {
+      showNotice(err.message, 'error');
+    }
+  });
+}
+
+window.editAdminUser = function(id, username, role, active) {
+  adminUserId.value = id;
+  adminUsername.value = username;
+  adminPassword.value = '';
+  adminPassword.placeholder = 'Dejar vacío para conservarla';
+  adminRole.value = role;
+  adminActive.checked = active;
+  cancelAdminEdit.classList.remove('hidden');
+  adminUsername.focus();
+};
+
+window.deleteAdminUser = async function(id, username) {
+  if (!confirm(`¿Eliminar el acceso de ${username}?`)) return;
+  try {
+    const res = await fetch(`${API_URL}/admin/users/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await readApiJson(res);
+    if (!res.ok) throw new Error(data.error || 'No se pudo eliminar el administrador');
+    loadAdminUsers();
+    showNotice('Administrador eliminado.');
+  } catch (err) {
+    showNotice(err.message, 'error');
+  }
+};
+
+function resetAdminForm() {
+  adminUserForm.reset();
+  adminUserId.value = '';
+  adminActive.checked = true;
+  adminPassword.placeholder = 'Mínimo 6 caracteres';
+  cancelAdminEdit.classList.add('hidden');
+}
+
+if (cancelAdminEdit) cancelAdminEdit.addEventListener('click', resetAdminForm);
+
+const preferences = JSON.parse(localStorage.getItem('admin_preferences') || '{}');
+const notificationsSetting = document.getElementById('setting-notifications');
+const confirmChargeSetting = document.getElementById('setting-confirm-charge');
+if (notificationsSetting && preferences.notifications !== undefined) notificationsSetting.checked = preferences.notifications;
+if (confirmChargeSetting && preferences.confirmCharge !== undefined) confirmChargeSetting.checked = preferences.confirmCharge;
+document.getElementById('save-preferences')?.addEventListener('click', () => {
+  localStorage.setItem('admin_preferences', JSON.stringify({
+    notifications: notificationsSetting.checked,
+    confirmCharge: confirmChargeSetting.checked
+  }));
+  showNotice('Preferencias guardadas.');
+});
+document.getElementById('logout-all-sessions')?.addEventListener('click', () => {
+  if (confirm('¿Cerrar la sesión actual?')) logoutBtn.click();
+});
 
 // Cargar datos en el formulario para editar
 window.editProduct = function(id, category_id, name, price, description, customizationType, promoFreeExtras, available) {

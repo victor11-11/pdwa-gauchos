@@ -84,27 +84,27 @@
         </div>
 
         <nav class="sidebar-nav" aria-label="menu principal">
-          <button class="nav-item active" type="button">
+          <button class="nav-item active" data-view="dashboard" type="button">
             <span class="nav-icon">⌂</span>
             <span>Inicio</span>
           </button>
-          <button class="nav-item" type="button">
+          <button class="nav-item" data-view="pos" type="button">
             <span class="nav-icon">◫</span>
             <span>Ventas/POS</span>
           </button>
-          <button class="nav-item" type="button">
+          <button class="nav-item" data-view="tables" type="button">
             <span class="nav-icon">▣</span>
             <span>Mesas</span>
           </button>
-          <button class="nav-item" type="button">
+          <button class="nav-item" data-view="inventory" type="button">
             <span class="nav-icon">◧</span>
             <span>Inventario</span>
           </button>
-          <button class="nav-item" type="button">
+          <button class="nav-item" data-view="reports" type="button">
             <span class="nav-icon">▤</span>
             <span>Reportes</span>
           </button>
-          <button class="nav-item" type="button">
+          <button class="nav-item" data-view="settings" type="button">
             <span class="nav-icon">⚙</span>
             <span>Configuración</span>
           </button>
@@ -125,11 +125,11 @@
         <header class="admin-header">
           <div class="header-search-wrap">
             <span class="search-icon">⌕</span>
-            <input type="search" placeholder="Buscar producto, mesa o venta" aria-label="Buscar" />
+            <input id="global-search" type="search" placeholder="Buscar producto, mesa o venta" aria-label="Buscar" />
           </div>
 
           <div class="admin-header-actions">
-            <button class="currency-pill" type="button">
+            <button id="currency-toggle" class="currency-pill" type="button" aria-label="Cambiar moneda">
               <span>USD</span>
               <span class="currency-divider">/</span>
               <span class="muted">BS</span>
@@ -150,23 +150,23 @@
         </header>
 
         <main class="admin-content">
-          <section class="dashboard-intro">
+          <section id="dashboard-overview" class="dashboard-intro" data-view="dashboard">
             <div>
               <p class="eyebrow compact">Operaciones</p>
               <h1>Centro de control</h1>
               <p>Resumen de ventas, ocupación y pedidos del día.</p>
             </div>
-            <button class="primary-button new-sale-btn" type="button">+ Nueva venta</button>
+            <button id="new-sale-btn" class="primary-button new-sale-btn" type="button">+ Nueva venta</button>
           </section>
 
-          <section class="kpi-grid" aria-label="Métricas principales">
+          <section class="kpi-grid" aria-label="Métricas principales" data-view="dashboard">
             <article class="stat-card accent-red">
               <div class="stat-topline">
                 <span class="stat-label">Ventas del día</span>
                 <span class="stat-trend positive">+12.4%</span>
               </div>
-              <div class="stat-value">$24,860</div>
-              <div class="stat-meta">89 pedidos · 18 mesas atendidas</div>
+              <div id="daily-sales-total" class="stat-value">$0.00</div>
+              <div id="daily-sales-meta" class="stat-meta">0 pedidos · 0 mesas atendidas</div>
             </article>
 
             <article class="stat-card">
@@ -174,8 +174,8 @@
                 <span class="stat-label">Mesas ocupadas</span>
                 <span class="stat-trend neutral">18/24</span>
               </div>
-              <div class="stat-value">18</div>
-              <div class="stat-meta">6 libres · 2 reservas</div>
+              <div id="occupied-tables-value" class="stat-value">0</div>
+              <div id="occupied-tables-meta" class="stat-meta">24 libres · 0 reservas</div>
             </article>
 
             <article class="stat-card">
@@ -183,19 +183,19 @@
                 <span class="stat-label">Ticket promedio</span>
                 <span class="stat-trend neutral">Este mes</span>
               </div>
-              <div class="stat-value">$279</div>
-              <div class="stat-meta">+8% vs. ayer</div>
+              <div id="average-ticket-value" class="stat-value">$0.00</div>
+              <div id="average-ticket-meta" class="stat-meta">Sin ventas registradas hoy</div>
             </article>
           </section>
 
           <section class="dashboard-grid">
-            <div class="surface-card sales-panel">
+            <div id="reports-section" class="surface-card sales-panel" data-view="reports">
               <div class="panel-header">
                 <div>
                   <p class="eyebrow compact">Ventas</p>
                   <h2>Actividad reciente</h2>
                 </div>
-                <button class="outline-button" type="button">Ver reportes</button>
+                <button id="reports-btn" class="outline-button" type="button">Ver reportes</button>
               </div>
 
               <div class="chart-bars" aria-label="Gráfico de ventas semanales">
@@ -240,34 +240,14 @@
                       <th>Estado</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    <tr>
-                      <td>#12</td>
-                      <td>Combo Gaucho</td>
-                      <td>18:40</td>
-                      <td>$145.00</td>
-                      <td><span class="status-pill available">Listo</span></td>
-                    </tr>
-                    <tr>
-                      <td>#08</td>
-                      <td>2 Hamburguesas + postre</td>
-                      <td>18:26</td>
-                      <td>$92.50</td>
-                      <td><span class="status-pill available">En cocina</span></td>
-                    </tr>
-                    <tr>
-                      <td>#14</td>
-                      <td>Pizzas + bebidas</td>
-                      <td>18:12</td>
-                      <td>$168.00</td>
-                      <td><span class="status-pill unavailable">En tránsito</span></td>
-                    </tr>
+                  <tbody id="daily-orders-list">
+                    <tr><td colspan="5" class="empty-state">Todavía no hay ventas registradas hoy.</td></tr>
                   </tbody>
                 </table>
               </div>
             </div>
 
-            <aside class="surface-card pos-panel">
+            <aside id="pos-section" class="surface-card pos-panel" data-view="pos">
               <div class="panel-header pos-header">
                 <div>
                   <p class="eyebrow compact">Punto de venta</p>
@@ -312,19 +292,19 @@
               </div>
 
               <div class="pos-actions">
-                <button class="outline-button wide" type="button">Guardar</button>
-                <button class="primary-button wide" type="button">Cobrar</button>
+                <button id="save-sale-btn" class="outline-button wide" type="button">Guardar</button>
+                <button id="charge-sale-btn" class="primary-button wide" type="button">Cobrar</button>
               </div>
             </aside>
           </section>
 
-          <nav class="dashboard-tabs" aria-label="Secciones del panel">
+          <nav class="dashboard-tabs" aria-label="Secciones del panel" data-view="inventory">
             <button class="dashboard-tab is-active" data-tab="products" type="button"><span>📦</span> Productos y promos</button>
             <button class="dashboard-tab" data-tab="extras" type="button"><span>🍧</span> Toppings y sabores</button>
             <button class="dashboard-tab" data-tab="categories" type="button"><span>📂</span> Categorías</button>
           </nav>
 
-          <section class="tab-panel is-active" data-panel="products">
+          <section id="products-section" class="tab-panel is-active" data-panel="products" data-view="inventory">
             <div class="section-heading">
               <div>
                 <p class="eyebrow compact">Inventario</p>
@@ -400,7 +380,7 @@
             </div>
           </section>
 
-          <section class="tab-panel" data-panel="extras">
+          <section class="tab-panel" data-panel="extras" data-view="inventory">
             <div class="section-heading">
               <div>
                 <p class="eyebrow compact">Catálogo complementario</p>
@@ -467,7 +447,7 @@
             </div>
           </section>
 
-          <section class="tab-panel" data-panel="categories">
+          <section class="tab-panel" data-panel="categories" data-view="inventory">
             <div class="section-heading">
               <div>
                 <p class="eyebrow compact">Organización</p>
@@ -494,6 +474,89 @@
                 <button type="submit" class="primary-button">Crear categoría</button>
               </form>
             </section>
+          </section>
+
+          <section id="tables-section" class="admin-tables-view" data-view="tables">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow compact">Operación en sala</p>
+                <h2>Mesas y cuentas</h2>
+              </div>
+              <span class="section-note">Consulta disponibilidad y abre una cuenta</span>
+            </div>
+            <div class="tables-grid">
+              <article class="surface-card table-status-card" data-table="1" data-status="available"><div class="table-status-top"><strong>Mesa 1</strong><span class="status-pill available">Libre</span></div><p>Sin cuenta activa</p><button class="outline-button wide table-action" type="button">Abrir cuenta</button></article>
+              <article class="surface-card table-status-card" data-table="2" data-status="occupied"><div class="table-status-top"><strong>Mesa 2</strong><span class="status-pill unavailable">Ocupada</span></div><p>Cuenta activa · $86.00</p><button class="outline-button wide table-action" type="button">Ver cuenta</button></article>
+              <article class="surface-card table-status-card" data-table="3" data-status="available"><div class="table-status-top"><strong>Mesa 3</strong><span class="status-pill available">Libre</span></div><p>Sin cuenta activa</p><button class="outline-button wide table-action" type="button">Abrir cuenta</button></article>
+              <article class="surface-card table-status-card" data-table="4" data-status="reserved"><div class="table-status-top"><strong>Mesa 4</strong><span class="status-pill neutral">Reservada</span></div><p>Reserva · 20:30</p><button class="outline-button wide table-action" type="button">Ver reserva</button></article>
+              <article class="surface-card table-status-card" data-table="5" data-status="available"><div class="table-status-top"><strong>Mesa 5</strong><span class="status-pill available">Libre</span></div><p>Sin cuenta activa</p><button class="outline-button wide table-action" type="button">Abrir cuenta</button></article>
+              <article class="surface-card table-status-card" data-table="6" data-status="occupied"><div class="table-status-top"><strong>Mesa 6</strong><span class="status-pill unavailable">Ocupada</span></div><p>Cuenta activa · $142.50</p><button class="outline-button wide table-action" type="button">Ver cuenta</button></article>
+            </div>
+          </section>
+
+          <section id="settings-section" class="admin-settings-view" data-view="settings">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow compact">Administración</p>
+                <h2>Configuración del sistema</h2>
+              </div>
+              <span class="section-note">Controla accesos y preferencias del restaurante</span>
+            </div>
+            <div class="content-grid settings-grid">
+              <section class="surface-card form-card">
+                <div class="card-heading">
+                  <div>
+                    <span class="icon-tile green">＋</span>
+                    <div>
+                      <h3>Perfil de administrador</h3>
+                      <p>Crea un acceso nuevo o edita uno existente.</p>
+                    </div>
+                  </div>
+                </div>
+                <form id="admin-user-form" class="dashboard-form">
+                  <input type="hidden" id="admin-user-id" />
+                  <div><label for="admin-username">Usuario</label><input id="admin-username" type="text" autocomplete="username" required /></div>
+                  <div><label for="admin-password">Contraseña</label><input id="admin-password" type="password" minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres" /></div>
+                  <div class="form-grid two-columns">
+                    <div><label for="admin-role">Rol</label><select id="admin-role"><option value="admin">Administrador</option><option value="manager">Gerente</option><option value="cashier">Caja</option></select></div>
+                    <label class="check-label category-toggle"><input id="admin-active" type="checkbox" checked /> <span>Acceso activo</span></label>
+                  </div>
+                  <div class="form-actions">
+                    <button type="submit" class="primary-button">Guardar administrador</button>
+                    <button id="cancel-admin-edit" type="button" class="ghost-button hidden">Cancelar</button>
+                  </div>
+                </form>
+              </section>
+
+              <section class="surface-card table-card">
+                <div class="table-toolbar">
+                  <div><h3>Usuarios con acceso</h3><p>Administra quién puede entrar al panel.</p></div>
+                </div>
+                <div class="table-scroll">
+                  <table class="data-table">
+                    <thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Alta</th><th class="actions-column">Acciones</th></tr></thead>
+                    <tbody id="admin-users-list"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+            <div class="content-grid settings-grid settings-lower-grid">
+              <section class="surface-card form-card">
+                <div class="card-heading"><div><span class="icon-tile peach">◈</span><div><h3>Preferencias</h3><p>Se guardan en este navegador.</p></div></div></div>
+                <div class="dashboard-form">
+                  <label class="check-label"><input id="setting-notifications" type="checkbox" checked /> <span>Mostrar avisos de operación</span></label>
+                  <label class="check-label"><input id="setting-confirm-charge" type="checkbox" checked /> <span>Confirmar cobros antes de procesar</span></label>
+                  <button id="save-preferences" type="button" class="primary-button">Guardar preferencias</button>
+                </div>
+              </section>
+              <section class="surface-card form-card">
+                <div class="card-heading"><div><span class="icon-tile">⌁</span><div><h3>Sesión y seguridad</h3><p>Protege el acceso a tu operación.</p></div></div></div>
+                <div class="dashboard-form">
+                  <p class="section-note">La sesión actual expira automáticamente después de 12 horas.</p>
+                  <button id="logout-all-sessions" type="button" class="outline-button wide">Cerrar mi sesión</button>
+                </div>
+              </section>
+            </div>
           </section>
         </main>
       </div>

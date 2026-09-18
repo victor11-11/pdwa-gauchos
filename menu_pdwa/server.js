@@ -33,7 +33,10 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE,
-    password TEXT
+    password TEXT,
+    role TEXT DEFAULT 'admin',
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS categories (
@@ -74,7 +77,24 @@ db.exec(`
     available INTEGER DEFAULT 1,
     included INTEGER DEFAULT 0
   );
+
+  CREATE TABLE IF NOT EXISTS daily_sales (
+    sale_date TEXT PRIMARY KEY,
+    total REAL DEFAULT 0,
+    orders INTEGER DEFAULT 0,
+    tables_served INTEGER DEFAULT 0,
+    average_ticket REAL DEFAULT 0,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
 `);
+
+const userColumns = db.prepare(`PRAGMA table_info(users)`).all().map(column => column.name);
+if (!userColumns.includes('role')) db.exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'admin'`);
+if (!userColumns.includes('active')) db.exec(`ALTER TABLE users ADD COLUMN active INTEGER DEFAULT 1`);
+if (!userColumns.includes('created_at')) {
+  db.exec(`ALTER TABLE users ADD COLUMN created_at TEXT`);
+  db.exec(`UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL`);
+}
 
 const productColumns = db.prepare(`PRAGMA table_info(products)`).all().map(column => column.name);
 if (!productColumns.includes('description')) {
@@ -299,13 +319,100 @@ app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body;
   try {
     const user = db.prepare(`SELECT * FROM users WHERE username = ?`).get(username);
-    if (!user) return res.status(400).json({ error: 'Usuario incorrecto' });
+    if (!user || !user.active) return res.status(400).json({ error: 'Usuario incorrecto o inactivo' });
 
     const validPass = bcrypt.compareSync(password, user.password);
     if (!validPass) return res.status(400).json({ error: 'Contraseña incorrecta' });
 
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '12h' });
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
     res.json({ token, username: user.username });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/dashboard', authenticateToken, (req, res) => {
+  try {
+    const today = db.prepare(`SELECT date('now', 'localtime') AS sale_date`).get().sale_date;
+    const summary = db.prepare(`SELECT sale_date, total, orders, tables_served, average_ticket FROM daily_sales WHERE sale_date = ?`).get(today);
+    res.json(summary || {
+      sale_date: today,
+      total: 0,
+      orders: 0,
+      tables_served: 0,
+      average_ticket: 0,
+      orders_list: []
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/sales', authenticateToken, (req, res) => {
+  const total = Number(req.body.total);
+  const tablesServed = Number(req.body.tablesServed) || 0;
+  if (!Number.isFinite(total) || total <= 0) return res.status(400).json({ error: 'El total de la venta debe ser mayor que cero' });
+
+  try {
+    const today = db.prepare(`SELECT date('now', 'localtime') AS sale_date`).get().sale_date;
+    db.prepare(`
+      INSERT INTO daily_sales (sale_date, total, orders, tables_served, average_ticket, updated_at)
+      VALUES (?, ?, 1, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(sale_date) DO UPDATE SET
+        total = daily_sales.total + excluded.total,
+        orders = daily_sales.orders + 1,
+        tables_served = daily_sales.tables_served + excluded.tables_served,
+        average_ticket = (daily_sales.total + excluded.total) / (daily_sales.orders + 1),
+        updated_at = CURRENT_TIMESTAMP
+    `).run(today, total, tablesServed, total);
+    res.json({ message: 'Venta registrada', sale_date: today });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/users', authenticateToken, (req, res) => {
+  try {
+    const rows = db.prepare(`SELECT id, username, role, active, created_at FROM users ORDER BY username ASC`).all();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/users', authenticateToken, (req, res) => {
+  const { id, username, password, role, active } = req.body;
+  const cleanUsername = username?.trim();
+  if (!cleanUsername) return res.status(400).json({ error: 'El usuario es obligatorio' });
+  if (!id && (!password || password.length < 6)) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+
+  try {
+    const existing = id ? db.prepare(`SELECT * FROM users WHERE id = ?`).get(id) : null;
+    if (id && !existing) return res.status(404).json({ error: 'Administrador no encontrado' });
+    if (id === req.user.id && active === false) return res.status(400).json({ error: 'No puedes desactivar tu propio usuario' });
+
+    if (existing) {
+      const nextPassword = password ? bcrypt.hashSync(password, 10) : existing.password;
+      db.prepare(`UPDATE users SET username = ?, password = ?, role = ?, active = ? WHERE id = ?`)
+        .run(cleanUsername, nextPassword, role || 'admin', active === false ? 0 : 1, id);
+    } else {
+      const hash = bcrypt.hashSync(password, 10);
+      db.prepare(`INSERT INTO users (username, password, role, active) VALUES (?, ?, ?, ?)`)
+        .run(cleanUsername, hash, role || 'admin', active === false ? 0 : 1);
+    }
+    res.json({ message: 'Administrador guardado con éxito' });
+  } catch (err) {
+    const message = err.code === 'SQLITE_CONSTRAINT_UNIQUE' ? 'Ese usuario ya existe' : err.message;
+    res.status(400).json({ error: message });
+  }
+});
+
+app.delete('/api/admin/users/:id', authenticateToken, (req, res) => {
+  if (Number(req.params.id) === Number(req.user.id)) return res.status(400).json({ error: 'No puedes eliminar tu propio usuario' });
+  try {
+    const result = db.prepare(`DELETE FROM users WHERE id = ?`).run(req.params.id);
+    if (!result.changes) return res.status(404).json({ error: 'Administrador no encontrado' });
+    res.json({ message: 'Administrador eliminado' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

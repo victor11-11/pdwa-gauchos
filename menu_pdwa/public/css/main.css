@@ -26,6 +26,7 @@ body { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe 
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 .hidden { display: none !important; }
+.admin-view-hidden { display: none !important; }
 
 .admin-body {
   min-height: 100vh;
@@ -63,6 +64,43 @@ button { cursor: pointer; }
 .admin-shell {
   position: relative;
   z-index: 1;
+}
+
+.admin-settings-view {
+  display: grid;
+  gap: 22px;
+}
+.settings-grid {
+  align-items: start;
+}
+.settings-lower-grid {
+  margin-top: 0;
+}
+.tables-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.table-status-card {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+.table-status-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.table-status-card p {
+  color: var(--muted);
+  font-size: .92rem;
+}
+@media (max-width: 900px) {
+  .tables-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .tables-grid { grid-template-columns: 1fr; }
 }
 
 .pos-login-shell {
