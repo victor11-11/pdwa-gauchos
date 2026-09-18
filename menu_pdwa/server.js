@@ -16,30 +16,19 @@ const JWT_SECRET = 'clave_secreta_super_segura_menu_2026';
 app.use(cors());
 app.use(express.json());
 
-// Archivos estáticos
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ------------------------------------------------------------------
-// RUTAS DE NAVEGACIÓN WEB (VISTAS)
-// ------------------------------------------------------------------
-
-// Ruta principal -> Menú Público para Clientes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Ruta de administración -> Acceso Administrador / Panel
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
-// ------------------------------------------------------------------
-// CONEXIÓN A BASE DE DATOS BETTER-SQLITE3
-// ------------------------------------------------------------------
 const db = new Database(path.join(__dirname, 'database.sqlite'));
 console.log('⚡ Conectado a la base de datos SQLite.');
 
-// CREACIÓN Y ACTUALIZACIÓN DE TABLAS
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +76,6 @@ db.exec(`
   );
 `);
 
-// Mantiene compatibles las bases de datos creadas antes de añadir la personalización.
 const productColumns = db.prepare(`PRAGMA table_info(products)`).all().map(column => column.name);
 if (!productColumns.includes('description')) {
   db.exec(`ALTER TABLE products ADD COLUMN description TEXT`);
@@ -113,8 +101,6 @@ const extraColumns = db.prepare(`PRAGMA table_info(extras)`).all().map(column =>
 if (!extraColumns.includes('available')) db.exec(`ALTER TABLE extras ADD COLUMN available INTEGER DEFAULT 1`);
 if (!extraColumns.includes('included')) db.exec(`ALTER TABLE extras ADD COLUMN included INTEGER DEFAULT 0`);
 
-// SQLite no permite modificar un CHECK existente; reconstruimos tablas antiguas
-// que solo aceptaban burger y pizza para conservar sus datos y ampliar los tipos.
 const extrasSchema = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'extras'`).get()?.sql || '';
 if (!extrasSchema.includes('icecream_flavor')) {
   db.exec(`
@@ -135,7 +121,6 @@ if (!extrasSchema.includes('icecream_flavor')) {
   `);
 }
 
-// USUARIO ADMIN Y SEED
 const userCheck = db.prepare(`SELECT * FROM users WHERE username = 'admin'`).get();
 if (!userCheck) {
   const hash = bcrypt.hashSync('admin123', 10);
@@ -229,7 +214,6 @@ function seedDatabase() {
   extrasList.forEach(ex => insertExtra.run(...ex, ex[1] === 'icecream_flavor' ? 1 : 0));
 }
 
-// Completa presentaciones nuevas cuando la base ya existía antes de esta versión.
 const ensureCategory = db.prepare(`
   INSERT OR IGNORE INTO categories (id, name, isCustomizable, isCustomPizza, isCustomIceCream, baseName, sort_order)
   VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -258,7 +242,6 @@ db.prepare(`UPDATE products SET customization_type = 'icecream' WHERE category_i
 db.prepare(`UPDATE products SET customization_type = 'promo_pizza', promo_free_extras = 1 WHERE id = 'promo2'`).run();
 db.prepare(`UPDATE extras SET included = 1, price = 0 WHERE type = 'icecream_flavor'`).run();
 
-// MIDDLEWARE AUTENTICACIÓN ADMIN
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -271,7 +254,6 @@ function authenticateToken(req, res, next) {
   });
 }
 
-// RUTAS PÚBLICAS (CLIENTE)
 app.get('/api/menu', (req, res) => {
   try {
     const categories = db.prepare(`SELECT * FROM categories ORDER BY sort_order ASC`).all();
@@ -313,7 +295,6 @@ app.get('/api/menu', (req, res) => {
   }
 });
 
-// LOGIN ADMIN
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body;
   try {
@@ -330,9 +311,6 @@ app.post('/api/admin/login', (req, res) => {
   }
 });
 
-// RUTAS PRIVADAS (ADMIN)
-
-// Obtener todas las categorías
 app.get('/api/admin/categories', authenticateToken, (req, res) => {
   try {
     const rows = db.prepare(`SELECT * FROM categories ORDER BY sort_order ASC`).all();
@@ -342,7 +320,6 @@ app.get('/api/admin/categories', authenticateToken, (req, res) => {
   }
 });
 
-// Crear o actualizar categorías
 app.post('/api/admin/categories', authenticateToken, (req, res) => {
   const { id, name, isCustomizable, isCustomPizza, isCustomIceCream, baseName, sort_order } = req.body;
   const catId = id || name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
@@ -362,7 +339,6 @@ app.post('/api/admin/categories', authenticateToken, (req, res) => {
   }
 });
 
-// Obtener todos los productos (incluyendo no disponibles)
 app.get('/api/admin/products', authenticateToken, (req, res) => {
   try {
     const rows = db.prepare(`
@@ -376,7 +352,6 @@ app.get('/api/admin/products', authenticateToken, (req, res) => {
   }
 });
 
-// Obtener el catálogo completo de extras, incluyendo agotados.
 app.get('/api/admin/extras', authenticateToken, (req, res) => {
   try {
     const rows = db.prepare(`SELECT * FROM extras ORDER BY type ASC, name ASC`).all();
@@ -386,7 +361,6 @@ app.get('/api/admin/extras', authenticateToken, (req, res) => {
   }
 });
 
-// Crear o actualizar un extra, sabor o topping.
 app.post('/api/admin/extras', authenticateToken, (req, res) => {
   const { id, type, name, price, available, included } = req.body;
   const extraId = id || `${type}_${Date.now()}`;
@@ -411,7 +385,6 @@ app.post('/api/admin/extras', authenticateToken, (req, res) => {
   }
 });
 
-// Marcar un extra como disponible o agotado sin borrarlo.
 app.patch('/api/admin/extras/:id/toggle', authenticateToken, (req, res) => {
   try {
     db.prepare(`UPDATE extras SET available = ? WHERE id = ?`).run(req.body.available ? 1 : 0, req.params.id);
@@ -421,7 +394,6 @@ app.patch('/api/admin/extras/:id/toggle', authenticateToken, (req, res) => {
   }
 });
 
-// Crear o actualizar un producto
 app.post('/api/admin/products', authenticateToken, (req, res) => {
   const { id, category_id, name, price, description, available, customization_type, promo_free_extras } = req.body;
   const prodId = id || `prod_${Date.now()}`;
@@ -441,7 +413,6 @@ app.post('/api/admin/products', authenticateToken, (req, res) => {
   }
 });
 
-// Activar / Desactivar producto
 app.patch('/api/admin/products/:id/toggle', authenticateToken, (req, res) => {
   const { id } = req.params;
   const { available } = req.body;
@@ -454,7 +425,6 @@ app.patch('/api/admin/products/:id/toggle', authenticateToken, (req, res) => {
   }
 });
 
-// Eliminar producto
 app.delete('/api/admin/products/:id', authenticateToken, (req, res) => {
   const { id } = req.params;
   try {
