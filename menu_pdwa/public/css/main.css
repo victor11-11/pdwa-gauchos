@@ -72,28 +72,29 @@ button { cursor: pointer; }
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: #091310;
+  background: #f5f5f3;
 }
 .pos-login-bg {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 15% 20%, rgba(38, 88, 70, 0.32), transparent 18%),
-    radial-gradient(circle at 85% 25%, rgba(65, 118, 102, 0.25), transparent 18%),
-    linear-gradient(135deg, rgba(7, 14, 12, 0.94), rgba(12, 19, 16, 0.96));
+    linear-gradient(122deg, transparent 0 21%, rgba(122, 128, 130, 0.13) 21.2%, transparent 22%),
+    linear-gradient(28deg, transparent 0 66%, rgba(122, 128, 130, 0.11) 66.2%, transparent 67%),
+    radial-gradient(ellipse at 25% 18%, rgba(126, 132, 136, 0.14), transparent 22%),
+    radial-gradient(ellipse at 76% 76%, rgba(126, 132, 136, 0.11), transparent 25%),
+    linear-gradient(135deg, #ffffff 0%, #e8e8e6 48%, #fafaf9 100%);
 }
 .pos-login-bg::before,
 .pos-login-bg::after {
   content: "";
   position: absolute;
-  inset: 12% 28% 12% 28%;
-  background: radial-gradient(ellipse at 18% 34%, rgba(111, 165, 130, 0.36), transparent 14%),
-              radial-gradient(ellipse at 82% 34%, rgba(83, 146, 116, 0.32), transparent 14%),
-              radial-gradient(ellipse at 50% 62%, rgba(100, 131, 117, 0.28), transparent 16%);
-  filter: blur(14px) saturate(1.1);
-  opacity: 0.95;
+  inset: 0;
+  background: repeating-linear-gradient(156deg, transparent 0 78px, rgba(90, 96, 100, 0.06) 80px, transparent 84px);
+  filter: blur(8px);
+  opacity: 0.8;
 }
 .leaf {
+  display: none;
   position: absolute;
   display: block;
   width: 220px;
@@ -120,10 +121,10 @@ button { cursor: pointer; }
   width: min(100%, 470px);
   padding: 22px 24px 20px;
   border-radius: 26px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(14, 18, 17, 0.5);
+  border: 1px solid rgba(28, 32, 32, 0.14);
+  background: rgba(255,255,255,0.72);
   backdrop-filter: blur(14px);
-  box-shadow: 0 20px 44px rgba(0,0,0,0.38);
+  box-shadow: 0 20px 44px rgba(28, 32, 32, 0.18);
 }
 .pos-login-brand {
   display: flex;
@@ -131,15 +132,13 @@ button { cursor: pointer; }
   margin-bottom: 10px;
 }
 .pos-login-brand .brand-mark {
-  width: 72px;
-  height: 72px;
+  width: 148px;
+  height: 118px;
   border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(17,24,19,0.72);
-  color: #f3f4f5;
-  font-size: 2.7rem;
-  font-weight: 800;
-  box-shadow: 0 0 0 1px rgba(173, 68, 78, 0.22), 0 0 12px rgba(170, 73, 82, 0.28);
+  border: 1px solid rgba(35, 38, 38, 0.12);
+  background: #fff;
+  object-fit: cover;
+  box-shadow: 0 8px 18px rgba(35, 38, 38, 0.12);
 }
 .pos-login-meta {
   text-align: center;
@@ -147,7 +146,7 @@ button { cursor: pointer; }
 }
 .pos-login-kicker {
   margin: 0;
-  color: #d76a73;
+  color: #9c2938;
   font-size: 11px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -155,7 +154,7 @@ button { cursor: pointer; }
 }
 .pos-login-meta h1 {
   margin: 12px 0 0;
-  color: #fff;
+  color: #161b1b;
   font-size: clamp(2rem, 6vw, 3.2rem);
   letter-spacing: -0.06em;
   line-height: 0.98;
@@ -166,7 +165,7 @@ button { cursor: pointer; }
   margin: 20px auto 16px;
   max-width: 420px;
   text-align: center;
-  color: rgba(223, 232, 226, 0.9);
+  color: #4d5654;
   font-size: 1.05rem;
   line-height: 1.5;
 }
@@ -180,7 +179,7 @@ button { cursor: pointer; }
   gap: 8px;
 }
 .field-wrap label {
-  color: rgba(255,255,255,0.85);
+  color: #4d5654;
   font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -193,8 +192,8 @@ button { cursor: pointer; }
   gap: 12px;
   min-height: 58px;
   border-radius: 14px;
-  background: rgba(255,255,255,0.16);
-  border: 1px solid rgba(255,255,255,0.09);
+  background: rgba(255,255,255,0.82);
+  border: 1px solid rgba(28,32,32,0.16);
   padding: 0 14px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
 }
@@ -204,7 +203,7 @@ button { cursor: pointer; }
   justify-content: center;
   width: 18px;
   height: 18px;
-  color: rgba(255,255,255,0.72);
+  color: #68716e;
   font-size: 1.2rem;
 }
 .input-shell input {
@@ -212,10 +211,10 @@ button { cursor: pointer; }
   border: 0;
   outline: none;
   background: transparent;
-  color: #fff;
+  color: #1c2422;
   font-size: 1.05rem;
 }
-.input-shell input::placeholder { color: rgba(255,255,255,0.55); }
+.input-shell input::placeholder { color: #7a8380; }
 .pos-login-button {
   width: 100%;
   margin-top: 10px;
