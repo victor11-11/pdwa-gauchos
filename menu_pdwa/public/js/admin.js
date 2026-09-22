@@ -56,6 +56,20 @@ const occupiedTablesMeta = document.getElementById('occupied-tables-meta');
 const averageTicketValue = document.getElementById('average-ticket-value');
 const averageTicketMeta = document.getElementById('average-ticket-meta');
 const dailyOrdersList = document.getElementById('daily-orders-list');
+const tablesGrid = document.getElementById('tables-grid');
+const posTitle = document.getElementById('pos-title');
+const posTableBadge = document.getElementById('pos-table-badge');
+const posProductSelect = document.getElementById('pos-product-select');
+const posAddProduct = document.getElementById('pos-add-product');
+const posItems = document.getElementById('pos-items');
+const posNotes = document.getElementById('pos-notes');
+const posSubtotal = document.getElementById('pos-subtotal');
+const posTotal = document.getElementById('pos-total');
+const sendCommandButton = document.getElementById('send-command-btn');
+const printSaleButton = document.getElementById('print-sale-btn');
+let posTables = [];
+let posProducts = [];
+let activePosOrder = null;
 
 // Inicialización
 if (token) {
@@ -75,6 +89,8 @@ function showPanel() {
   loadCategories();
   loadProducts();
   loadExtras();
+  loadPosCatalog();
+  loadPosTables();
   loadAdminUsers();
   loadDashboard();
 }
@@ -152,22 +168,132 @@ document.querySelectorAll('.nav-item[data-view]').forEach(item => {
 
 activateView('dashboard');
 
-document.querySelectorAll('.table-action').forEach(button => {
-  button.addEventListener('click', () => {
-    const card = button.closest('.table-status-card');
-    const table = card.dataset.table;
-    if (card.dataset.status === 'available') {
-      card.dataset.status = 'occupied';
-      card.querySelector('.status-pill').className = 'status-pill unavailable';
-      card.querySelector('.status-pill').textContent = 'Ocupada';
-      card.querySelector('p').textContent = 'Cuenta activa · $0.00';
-      button.textContent = 'Ver cuenta';
-      showNotice(`Cuenta abierta en la mesa ${table}.`);
-    } else {
-      showNotice(`Mostrando la cuenta de la mesa ${table}.`);
+async function loadPosCatalog() {
+  try {
+    const res = await fetch('/api/menu', { cache: 'no-store' });
+    const data = await res.json();
+    posProducts = (data.menu || []).flatMap(category => (category.products || []).map(product => ({ ...product, categoryName: category.name })));
+    if (posProductSelect) {
+      posProductSelect.innerHTML = '<option value="">Selecciona un producto</option>' + posProducts.map(product => `<option value="${product.id}">${product.name} · $${Number(product.price).toFixed(2)}</option>`).join('');
     }
+  } catch (err) {
+    showNotice('No se pudo cargar el catálogo del POS.', 'error');
+  }
+}
+
+async function loadPosTables() {
+  try {
+    const res = await fetch(`${API_URL}/admin/pos/tables`, { headers: { 'Authorization': `Bearer ${token}` } });
+    posTables = await readApiJson(res);
+    renderPosTables();
+  } catch (err) {
+    showNotice(err.message, 'error');
+  }
+}
+
+function renderPosTables() {
+  if (!tablesGrid) return;
+  tablesGrid.innerHTML = posTables.map(table => {
+    const active = table.status !== 'available';
+    const order = table.order;
+    return `<article class="surface-card table-status-card ${active ? 'is-occupied' : ''}">
+      <div class="table-status-top"><strong>Mesa ${table.number}</strong><span class="status-pill ${active ? 'unavailable' : 'available'}">${active ? (table.status === 'sent' ? 'Comanda enviada' : 'Ocupada') : 'Libre'}</span></div>
+      <p>${active ? `${order.item_count || 0} productos · $${Number(order.total || 0).toFixed(2)}` : 'Sin cuenta activa'}</p>
+      <button class="outline-button wide table-action" data-table-number="${table.number}" type="button">${active ? 'Ver cuenta' : 'Abrir mesa'}</button>
+    </article>`;
+  }).join('');
+}
+
+async function openPosTable(tableNumber) {
+  try {
+    const res = await fetch(`${API_URL}/admin/pos/orders`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ tableNumber })
+    });
+    activePosOrder = await readApiJson(res);
+    renderPosOrder();
+    activateView('pos');
+    document.getElementById('pos-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    loadPosTables();
+  } catch (err) {
+    showNotice(err.message, 'error');
+  }
+}
+
+function renderPosOrder() {
+  const hasOrder = Boolean(activePosOrder);
+  const items = activePosOrder?.items || [];
+  if (posTitle) posTitle.textContent = hasOrder ? `Cuenta mesa ${activePosOrder.table_number}` : 'Selecciona una mesa';
+  if (posTableBadge) posTableBadge.textContent = hasOrder ? `Mesa ${activePosOrder.table_number}` : 'Sin mesa';
+  if (posNotes) posNotes.value = activePosOrder?.notes || '';
+  if (posProductSelect) posProductSelect.disabled = !hasOrder;
+  if (posAddProduct) posAddProduct.disabled = !hasOrder;
+  if (sendCommandButton) sendCommandButton.disabled = !hasOrder || !items.length;
+  if (printSaleButton) printSaleButton.disabled = !hasOrder;
+  if (chargeSaleButton) chargeSaleButton.disabled = !hasOrder || !items.length;
+  if (posItems) posItems.innerHTML = hasOrder && items.length ? items.map(item => `<div class="pos-item" data-item-id="${item.id}"><div class="pos-item-copy"><strong>${item.name}</strong><small>${item.quantity}x · $${Number(item.unit_price).toFixed(2)}</small><input class="pos-item-description" data-item-id="${item.id}" value="${escapeHtml(item.description || '')}" placeholder="Descripción para cocina" /></div><div class="pos-item-actions"><span>$${(Number(item.unit_price) * item.quantity).toFixed(2)}</span><div class="pos-qty-control"><button class="pos-quantity-button" data-item-id="${item.id}" data-quantity-change="-1" type="button" aria-label="Disminuir cantidad">−</button><strong>${item.quantity}</strong><button class="pos-quantity-button" data-item-id="${item.id}" data-quantity-change="1" type="button" aria-label="Aumentar cantidad">+</button></div><button class="ghost-button pos-remove-item" data-item-id="${item.id}" type="button" aria-label="Eliminar producto">Eliminar</button></div></div>`).join('') : `<p class="pos-empty">${hasOrder ? 'Agrega productos para abrir la cuenta.' : 'Abre una mesa para comenzar la cuenta.'}</p>`;
+  const subtotal = Number(activePosOrder?.subtotal || 0);
+  if (posSubtotal) posSubtotal.textContent = `$${subtotal.toFixed(2)}`;
+  if (posTotal) posTotal.textContent = `$${Number(activePosOrder?.total || 0).toFixed(2)}`;
+}
+
+async function savePosOrder(status = 'open', paymentMethod = '') {
+  if (!activePosOrder) return null;
+  const items = (activePosOrder.items || []).map(item => ({ productId: item.product_id, quantity: item.quantity, description: item.description || '' }));
+  const res = await fetch(`${API_URL}/admin/pos/orders/${activePosOrder.id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ items, notes: posNotes?.value || '', status, paymentMethod })
   });
+  activePosOrder = await readApiJson(res);
+  renderPosOrder();
+  await loadPosTables();
+  return activePosOrder;
+}
+
+document.addEventListener('click', async event => {
+  const tableButton = event.target.closest('.table-action');
+  if (tableButton) await openPosTable(Number(tableButton.dataset.tableNumber));
+  const removeButton = event.target.closest('.pos-remove-item');
+  if (removeButton && activePosOrder) {
+    activePosOrder.items = activePosOrder.items.filter(item => String(item.id) !== removeButton.dataset.itemId);
+    await savePosOrder();
+  }
+  const quantityButton = event.target.closest('.pos-quantity-button');
+  if (quantityButton && activePosOrder) {
+    const item = activePosOrder.items.find(orderItem => String(orderItem.id) === quantityButton.dataset.itemId);
+    if (item) {
+      item.quantity += Number(quantityButton.dataset.quantityChange);
+      if (item.quantity <= 0) activePosOrder.items = activePosOrder.items.filter(orderItem => orderItem !== item);
+      await savePosOrder();
+    }
+  }
 });
+
+document.addEventListener('change', async event => {
+  const descriptionInput = event.target.closest('.pos-item-description');
+  if (!descriptionInput || !activePosOrder) return;
+  const item = activePosOrder.items.find(orderItem => String(orderItem.id) === descriptionInput.dataset.itemId);
+  if (item) {
+    item.description = descriptionInput.value.trim();
+    try { await savePosOrder(); } catch (err) { showNotice(err.message, 'error'); }
+  }
+});
+
+if (posAddProduct) posAddProduct.addEventListener('click', async () => {
+  const product = posProducts.find(item => item.id === posProductSelect.value);
+  if (!product || !activePosOrder) return;
+  const existing = activePosOrder.items.find(item => item.product_id === product.id);
+  if (existing) existing.quantity += 1;
+  else activePosOrder.items.push({ product_id: product.id, name: product.name, unit_price: product.price, quantity: 1, description: '' });
+  posProductSelect.value = '';
+  await savePosOrder();
+});
+
+if (sendCommandButton) sendCommandButton.addEventListener('click', async () => {
+  try { await savePosOrder('sent'); showNotice('Comanda enviada a cocina.'); } catch (err) { showNotice(err.message, 'error'); }
+});
+
+if (printSaleButton) printSaleButton.addEventListener('click', () => printPosReceipt(activePosOrder));
 
 const globalSearch = document.getElementById('global-search');
 if (globalSearch) {
@@ -207,32 +333,35 @@ if (reportsButton) reportsButton.addEventListener('click', () => {
   showNotice('Mostrando actividad reciente de ventas.');
 });
 
-const saveSaleButton = document.getElementById('save-sale-btn');
-if (saveSaleButton) saveSaleButton.addEventListener('click', () => {
-  localStorage.setItem('draft_sale', JSON.stringify({ savedAt: new Date().toISOString(), total: 150 }));
-  showNotice('Venta guardada como borrador.');
+const chargeSaleButton = document.getElementById('charge-sale-btn');
+if (chargeSaleButton) chargeSaleButton.addEventListener('click', async () => {
+  if (!activePosOrder) return;
+  if (!confirm(`¿Cerrar y cobrar la cuenta de la mesa ${activePosOrder.table_number} por $${Number(activePosOrder.total).toFixed(2)}?`)) return;
+  try {
+    await savePosOrder('paid', 'efectivo');
+    printPosReceipt(activePosOrder);
+    activePosOrder = null;
+    renderPosOrder();
+    loadDashboard();
+    showNotice('Cuenta cobrada y mesa liberada.');
+  } catch (err) {
+    showNotice(err.message, 'error');
+  }
 });
 
-const chargeSaleButton = document.getElementById('charge-sale-btn');
-if (chargeSaleButton) chargeSaleButton.addEventListener('click', () => {
-  const confirmCharge = JSON.parse(localStorage.getItem('admin_preferences') || '{}').confirmCharge !== false;
-  if (confirmCharge && !confirm('¿Confirmar el cobro de $150.00?')) return;
-  fetch(`${API_URL}/admin/sales`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify({ total: 150, tablesServed: 1 })
-  })
-    .then(readApiJson)
-    .then(data => {
-      if (data.error) throw new Error(data.error);
-      localStorage.removeItem('draft_sale');
-      chargeSaleButton.disabled = true;
-      chargeSaleButton.textContent = 'Cobrado';
-      loadDashboard();
-      showNotice('Cobro registrado correctamente.');
-    })
-    .catch(err => showNotice(err.message, 'error'));
-});
+function printPosReceipt(order) {
+  if (!order) return;
+  const receiptWindow = window.open('', '_blank', 'width=420,height=720');
+  if (!receiptWindow) {
+    showNotice('El navegador bloqueó la ventana de impresión.', 'error');
+    return;
+  }
+  const items = (order.items || []).map(item => `<div class="line"><span>${item.quantity}x ${escapeHtml(item.name)}${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}</span><strong>$${(Number(item.unit_price) * item.quantity).toFixed(2)}</strong></div>`).join('');
+  receiptWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cuenta mesa ${order.table_number}</title><style>@page{size:80mm auto;margin:4mm}*{box-sizing:border-box}body{width:72mm;margin:0;font:12px/1.35 monospace;color:#111}.center{text-align:center}h1{font-size:18px;margin:0 0 4px}.muted{color:#555}.rule{border-top:1px dashed #111;margin:8px 0}.line{display:flex;justify-content:space-between;gap:8px;margin:6px 0}.line span{max-width:52mm}.line small{display:block;color:#555}.total{font-size:16px;font-weight:bold}.actions{margin-top:16px;display:flex;gap:8px}.actions button{padding:8px;border:1px solid #111;background:#fff}@media print{.actions{display:none}}</style></head><body><div class="center"><h1>D'ROMA</h1><div>Cuenta / Comanda</div><div>Mesa ${order.table_number} · ${new Date().toLocaleString('es-VE')}</div></div><div class="rule"></div>${items || '<div>Sin productos</div>'}<div class="rule"></div><div class="line"><span>Subtotal</span><strong>$${Number(order.subtotal).toFixed(2)}</strong></div><div class="line total"><span>TOTAL</span><strong>$${Number(order.total).toFixed(2)}</strong></div>${order.notes ? `<div class="rule"></div><div><strong>Notas:</strong><br>${escapeHtml(order.notes)}</div>` : ''}<div class="center muted" style="margin-top:14px">Gracias por su visita</div><div class="actions"><button onclick="window.print()">Imprimir</button><button onclick="window.close()">Cerrar</button></div></body></html>`);
+  receiptWindow.document.close();
+  receiptWindow.focus();
+  setTimeout(() => receiptWindow.print(), 250);
+}
 
 // Login
 loginForm.addEventListener('submit', async (e) => {

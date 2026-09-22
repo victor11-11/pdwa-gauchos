@@ -251,49 +251,37 @@
               <div class="panel-header pos-header">
                 <div>
                   <p class="eyebrow compact">Punto de venta</p>
-                  <h2>Cuenta activa</h2>
+                  <h2 id="pos-title">Selecciona una mesa</h2>
                 </div>
-                <span class="pos-badge">Mesa 8</span>
+                <span id="pos-table-badge" class="pos-badge">Sin mesa</span>
               </div>
 
-              <div class="pos-items">
-                <div class="pos-item">
-                  <div>
-                    <strong>Gaucho Especial</strong>
-                    <small>1x ·  Grilled</small>
-                  </div>
-                  <span>$36.00</span>
-                </div>
-                <div class="pos-item">
-                  <div>
-                    <strong>Parrilla Mixta</strong>
-                    <small>2x ·  Sabor</small>
-                  </div>
-                  <span>$72.00</span>
-                </div>
-                <div class="pos-item">
-                  <div>
-                    <strong>Papas con chili</strong>
-                    <small>1x</small>
-                  </div>
-                  <span>$12.00</span>
+              <div class="pos-add-item">
+                <label for="pos-product-select">Agregar producto</label>
+                <div class="pos-add-row">
+                  <select id="pos-product-select" disabled><option>Selecciona una mesa primero</option></select>
+                  <button id="pos-add-product" class="primary-button" type="button" disabled>Agregar</button>
                 </div>
               </div>
+
+              <div id="pos-items" class="pos-items"><p class="pos-empty">Abre una mesa para comenzar la cuenta.</p></div>
+              <label class="pos-notes-label" for="pos-notes">Notas de la comanda / cuenta<textarea id="pos-notes" rows="2" placeholder="Ej. pedido para llevar, cliente de la mesa..."></textarea></label>
 
               <div class="pos-summary">
-                <div class="summary-row"><span>Subtotal</span><strong>$120.00</strong></div>
-                <div class="summary-row"><span>Servicio</span><strong>$18.00</strong></div>
-                <div class="summary-row"><span>Impuestos</span><strong>$12.00</strong></div>
+                <div class="summary-row"><span>Subtotal</span><strong id="pos-subtotal">$0.00</strong></div>
+                <div class="summary-row"><span>Servicio</span><strong>$0.00</strong></div>
+                <div class="summary-row"><span>Impuestos</span><strong>$0.00</strong></div>
               </div>
 
               <div class="summary-total">
                 <span>Total</span>
-                <strong>$150.00</strong>
+                <strong id="pos-total">$0.00</strong>
               </div>
 
-              <div class="pos-actions">
-                <button id="save-sale-btn" class="outline-button wide" type="button">Guardar</button>
-                <button id="charge-sale-btn" class="primary-button wide" type="button">Cobrar</button>
+              <div class="pos-actions pos-actions-three">
+                <button id="send-command-btn" class="outline-button wide" type="button" disabled>Enviar comanda</button>
+                <button id="print-sale-btn" class="outline-button wide" type="button" disabled>Imprimir cuenta</button>
+                <button id="charge-sale-btn" class="primary-button wide" type="button" disabled>Cobrar y cerrar</button>
               </div>
             </aside>
           </section>
@@ -502,14 +490,7 @@
               </div>
               <span class="section-note">Consulta disponibilidad y abre una cuenta</span>
             </div>
-            <div class="tables-grid">
-              <article class="surface-card table-status-card" data-table="1" data-status="available"><div class="table-status-top"><strong>Mesa 1</strong><span class="status-pill available">Libre</span></div><p>Sin cuenta activa</p><button class="outline-button wide table-action" type="button">Abrir cuenta</button></article>
-              <article class="surface-card table-status-card" data-table="2" data-status="occupied"><div class="table-status-top"><strong>Mesa 2</strong><span class="status-pill unavailable">Ocupada</span></div><p>Cuenta activa · $86.00</p><button class="outline-button wide table-action" type="button">Ver cuenta</button></article>
-              <article class="surface-card table-status-card" data-table="3" data-status="available"><div class="table-status-top"><strong>Mesa 3</strong><span class="status-pill available">Libre</span></div><p>Sin cuenta activa</p><button class="outline-button wide table-action" type="button">Abrir cuenta</button></article>
-              <article class="surface-card table-status-card" data-table="4" data-status="reserved"><div class="table-status-top"><strong>Mesa 4</strong><span class="status-pill neutral">Reservada</span></div><p>Reserva · 20:30</p><button class="outline-button wide table-action" type="button">Ver reserva</button></article>
-              <article class="surface-card table-status-card" data-table="5" data-status="available"><div class="table-status-top"><strong>Mesa 5</strong><span class="status-pill available">Libre</span></div><p>Sin cuenta activa</p><button class="outline-button wide table-action" type="button">Abrir cuenta</button></article>
-              <article class="surface-card table-status-card" data-table="6" data-status="occupied"><div class="table-status-top"><strong>Mesa 6</strong><span class="status-pill unavailable">Ocupada</span></div><p>Cuenta activa · $142.50</p><button class="outline-button wide table-action" type="button">Ver cuenta</button></article>
-            </div>
+            <div id="tables-grid" class="tables-grid"></div>
           </section>
 
           <section id="settings-section" class="admin-settings-view" data-view="settings">

@@ -85,6 +85,13 @@ button { cursor: pointer; }
   display: grid;
   gap: 14px;
   padding: 20px;
+  color: var(--text);
+  background: rgba(255,255,255,0.82);
+}
+.table-status-card.is-occupied {
+  border: 2px solid #ef4444;
+  background: #fff1f2;
+  box-shadow: 0 10px 24px rgba(239,68,68,0.14);
 }
 .table-status-top {
   display: flex;
@@ -704,6 +711,12 @@ button { cursor: pointer; }
   flex-direction: column;
   gap: 16px;
 }
+.pos-add-item { display: grid; gap: 7px; }
+.pos-add-item label, .pos-notes-label { color: var(--muted); font-size: 0.75rem; font-weight: 700; }
+.pos-add-row { display: flex; gap: 8px; }
+.pos-add-row select { flex: 1; min-width: 0; }
+.pos-notes-label { display: grid; gap: 7px; }
+.pos-notes-label textarea { min-height: 58px; resize: vertical; }
 .pos-items {
   display: grid;
   gap: 12px;
@@ -717,7 +730,9 @@ button { cursor: pointer; }
   padding: 12px 14px;
   border: 1px solid rgba(29,27,26,0.06);
   border-radius: 14px;
-  background: rgba(255,255,255,0.2);
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: 0 3px 10px rgba(17,24,39,0.04);
 }
 .pos-item strong,
 .pos-item span {
@@ -726,6 +741,17 @@ button { cursor: pointer; }
 .pos-item small {
   color: var(--muted);
 }
+.pos-item-copy { min-width: 0; flex: 1; }
+.pos-item-copy strong { overflow-wrap: anywhere; }
+.pos-item-description { width: 100%; margin-top: 7px; padding: 6px 8px; border: 1px solid rgba(29,27,26,0.08); border-radius: 7px; background: rgba(255,255,255,0.5); font-size: 0.72rem; }
+.pos-item-actions { display: grid; justify-items: end; gap: 6px; }
+.pos-item-actions .ghost-button { padding: 4px 7px; font-size: 0.68rem; }
+.pos-qty-control { display: flex; align-items: center; gap: 8px; }
+.pos-qty-control strong { min-width: 22px; text-align: center; color: var(--text); }
+.pos-quantity-button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #cbd5e1; border-radius: 9px; background: #f8fafc; color: #111827; font-size: 1.25rem; font-weight: 800; }
+.pos-quantity-button:hover, .pos-quantity-button:focus-visible { border-color: var(--primary); background: #fff1f2; color: var(--primary); }
+.pos-empty { margin: 0; padding: 18px; border: 1px dashed rgba(29,27,26,0.12); border-radius: 10px; color: var(--muted); text-align: center; font-size: 0.8rem; }
+.pos-actions-three { grid-template-columns: repeat(3, 1fr); }
 .pos-summary {
   border-top: 1px solid rgba(29,27,26,0.08);
   padding-top: 12px;
@@ -978,12 +1004,14 @@ button { cursor: pointer; }
   font-weight: 700;
 }
 .status-pill.available {
-  background: rgba(47,156,99,0.12);
-  color: #1d7445;
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
 }
 .status-pill.unavailable {
-  background: rgba(29,27,26,0.06);
-  color: var(--muted);
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
 }
 .status-pill::before {
   content: '';

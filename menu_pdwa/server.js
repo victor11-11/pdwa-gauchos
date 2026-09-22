@@ -86,6 +86,33 @@ db.exec(`
     average_ticket REAL DEFAULT 0,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS pos_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_number INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'sent', 'paid', 'cancelled')),
+    notes TEXT DEFAULT '',
+    subtotal REAL NOT NULL DEFAULT 0,
+    service REAL NOT NULL DEFAULT 0,
+    tax REAL NOT NULL DEFAULT 0,
+    total REAL NOT NULL DEFAULT 0,
+    payment_method TEXT DEFAULT '',
+    opened_by TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    closed_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS pos_order_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    product_id TEXT,
+    name TEXT NOT NULL,
+    unit_price REAL NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    description TEXT DEFAULT '',
+    FOREIGN KEY(order_id) REFERENCES pos_orders(id) ON DELETE CASCADE
+  );
 `);
 
 const userColumns = db.prepare(`PRAGMA table_info(users)`).all().map(column => column.name);
@@ -368,6 +395,81 @@ app.post('/api/admin/sales', authenticateToken, (req, res) => {
     res.json({ message: 'Venta registrada', sale_date: today });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+function getPosOrder(orderId) {
+  const order = db.prepare(`SELECT * FROM pos_orders WHERE id = ?`).get(orderId);
+  if (!order) return null;
+  order.items = db.prepare(`SELECT id, product_id, name, unit_price, quantity, description FROM pos_order_items WHERE order_id = ? ORDER BY id`).all(orderId);
+  return order;
+}
+
+app.get('/api/admin/pos/tables', authenticateToken, (req, res) => {
+  try {
+    const orders = db.prepare(`SELECT o.*, COUNT(i.id) AS item_count FROM pos_orders o LEFT JOIN pos_order_items i ON i.order_id = o.id WHERE o.status IN ('open', 'sent') GROUP BY o.id ORDER BY o.table_number`).all();
+    const activeOrders = new Map(orders.map(order => [order.table_number, order]));
+    res.json(Array.from({ length: 14 }, (_, index) => {
+      const tableNumber = index + 1;
+      const order = activeOrders.get(tableNumber);
+      return { number: tableNumber, status: order ? order.status : 'available', order: order || null };
+    }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/pos/orders', authenticateToken, (req, res) => {
+  const tableNumber = Number(req.body.tableNumber);
+  if (!Number.isInteger(tableNumber) || tableNumber < 1 || tableNumber > 14) return res.status(400).json({ error: 'La mesa debe estar entre 1 y 14' });
+  try {
+    const existing = db.prepare(`SELECT id FROM pos_orders WHERE table_number = ? AND status IN ('open', 'sent')`).get(tableNumber);
+    if (existing) return res.json(getPosOrder(existing.id));
+    const result = db.prepare(`INSERT INTO pos_orders (table_number, opened_by) VALUES (?, ?)`).run(tableNumber, req.user.username);
+    res.status(201).json(getPosOrder(result.lastInsertRowid));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/pos/orders/:id', authenticateToken, (req, res) => {
+  const order = getPosOrder(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Cuenta no encontrada' });
+  res.json(order);
+});
+
+app.patch('/api/admin/pos/orders/:id', authenticateToken, (req, res) => {
+  const orderId = Number(req.params.id);
+  const current = getPosOrder(orderId);
+  if (!current) return res.status(404).json({ error: 'Cuenta no encontrada' });
+  if (current.status === 'paid' || current.status === 'cancelled') return res.status(400).json({ error: 'La cuenta ya está cerrada' });
+  const items = Array.isArray(req.body.items) ? req.body.items : current.items;
+  const cleanItems = items.map(item => ({ productId: String(item.productId || item.product_id || ''), quantity: Math.max(1, Math.floor(Number(item.quantity) || 1)), description: String(item.description || '').trim() })).filter(item => item.productId);
+
+  try {
+    const products = cleanItems.length ? db.prepare(`SELECT id, name, price FROM products WHERE id IN (${cleanItems.map(() => '?').join(',')}) AND available = 1`).all(...cleanItems.map(item => item.productId)) : [];
+    const productMap = new Map(products.map(product => [product.id, product]));
+    const resolvedItems = cleanItems.map(item => {
+      const product = productMap.get(item.productId);
+      if (!product) throw new Error(`Producto no disponible: ${item.productId}`);
+      return { ...item, name: product.name, unitPrice: Number(product.price) };
+    });
+    const subtotal = resolvedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const nextStatus = req.body.status === 'sent' ? 'sent' : req.body.status === 'paid' ? 'paid' : 'open';
+    const transaction = db.transaction(() => {
+      db.prepare(`DELETE FROM pos_order_items WHERE order_id = ?`).run(orderId);
+      const insertItem = db.prepare(`INSERT INTO pos_order_items (order_id, product_id, name, unit_price, quantity, description) VALUES (?, ?, ?, ?, ?, ?)`);
+      resolvedItems.forEach(item => insertItem.run(orderId, item.productId, item.name, item.unitPrice, item.quantity, item.description));
+      db.prepare(`UPDATE pos_orders SET status = ?, notes = ?, subtotal = ?, total = ?, payment_method = ?, updated_at = CURRENT_TIMESTAMP, closed_at = CASE WHEN ? = 'paid' THEN CURRENT_TIMESTAMP ELSE closed_at END WHERE id = ?`).run(nextStatus, String(req.body.notes || '').trim(), subtotal, subtotal, String(req.body.paymentMethod || ''), nextStatus, orderId);
+      if (nextStatus === 'paid') {
+        const today = db.prepare(`SELECT date('now', 'localtime') AS sale_date`).get().sale_date;
+        db.prepare(`INSERT INTO daily_sales (sale_date, total, orders, tables_served, average_ticket, updated_at) VALUES (?, ?, 1, 1, ?, CURRENT_TIMESTAMP) ON CONFLICT(sale_date) DO UPDATE SET total = daily_sales.total + excluded.total, orders = daily_sales.orders + 1, tables_served = daily_sales.tables_served + 1, average_ticket = (daily_sales.total + excluded.total) / (daily_sales.orders + 1), updated_at = CURRENT_TIMESTAMP`).run(today, subtotal, subtotal);
+      }
+    });
+    transaction();
+    res.json(getPosOrder(orderId));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
