@@ -2,7 +2,7 @@ import { BASE_TOPPINGS, BASE_SAUCES, BURGER_EXTRAS } from './data/menu.js';
 import { cartState } from './state/cart.js';
 
 // Configura el número de teléfono del restaurante para WhatsApp (Formato internacional sin +)
-const RESTAURANT_WHATSAPP = '584120000000'; 
+const RESTAURANT_WHATSAPP = '584121764277'; 
 
 let MENU_DATA = [];
 let AVAILABLE_BURGER_EXTRAS = BURGER_EXTRAS;
