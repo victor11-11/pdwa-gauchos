@@ -152,6 +152,9 @@ const extraColumns = db.prepare(`PRAGMA table_info(extras)`).all().map(column =>
 if (!extraColumns.includes('available')) db.exec(`ALTER TABLE extras ADD COLUMN available INTEGER DEFAULT 1`);
 if (!extraColumns.includes('included')) db.exec(`ALTER TABLE extras ADD COLUMN included INTEGER DEFAULT 0`);
 
+const orderItemColumns = db.prepare(`PRAGMA table_info(pos_order_items)`).all().map(column => column.name);
+if (!orderItemColumns.includes('note')) db.exec(`ALTER TABLE pos_order_items ADD COLUMN note TEXT DEFAULT ''`);
+
 const extrasSchema = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'extras'`).get()?.sql || '';
 if (!extrasSchema.includes('icecream_flavor')) {
   db.exec(`
@@ -433,14 +436,51 @@ app.post('/api/admin/sales', authenticateToken, (req, res) => {
 function getPosOrder(orderId) {
   const order = db.prepare(`SELECT * FROM pos_orders WHERE id = ?`).get(orderId);
   if (!order) return null;
-  order.items = db.prepare(`SELECT id, product_id, name, unit_price, quantity, description FROM pos_order_items WHERE order_id = ? ORDER BY id`).all(orderId);
+  order.items = db.prepare(`SELECT id, product_id, name, unit_price, quantity, description, note FROM pos_order_items WHERE order_id = ? ORDER BY id`).all(orderId);
   return order;
+}
+
+function releasePosTableByNumber(tableNumber) {
+  const table = Number(tableNumber);
+  if (!Number.isInteger(table) || table < 1 || table > 14) {
+    return { released: false, message: 'La mesa debe estar entre 1 y 14' };
+  }
+
+  const openOrders = db.prepare(`SELECT id, table_number FROM pos_orders WHERE table_number = ? AND status IN ('open', 'sent') ORDER BY updated_at DESC`).all(table);
+  if (!openOrders.length) {
+    return { released: false, tableNumber: table, message: 'La mesa ya está libre' };
+  }
+
+  const ids = openOrders.map(order => order.id);
+  const placeholders = ids.map(() => '?').join(',');
+  db.prepare(`DELETE FROM pos_order_items WHERE order_id IN (${placeholders})`).run(...ids);
+  db.prepare(`UPDATE pos_orders SET status = 'cancelled', subtotal = 0, total = 0, notes = '', payment_method = '', updated_at = CURRENT_TIMESTAMP, closed_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`).run(...ids);
+
+  return { released: true, tableNumber: table, orderIds: ids, message: `Mesa ${table} liberada` };
+}
+
+function closePosOrderById(orderId) {
+  const id = Number(orderId);
+  if (!Number.isInteger(id)) {
+    return { released: false, message: 'ID de pedido inválido' };
+  }
+
+  const current = getPosOrder(id);
+  if (!current) {
+    return { released: false, message: 'Pedido no encontrado' };
+  }
+
+  db.prepare(`DELETE FROM pos_order_items WHERE order_id = ?`).run(id);
+  db.prepare(`UPDATE pos_orders SET status = 'cancelled', subtotal = 0, total = 0, notes = '', payment_method = '', updated_at = CURRENT_TIMESTAMP, closed_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
+
+  return { released: true, orderId: id, tableNumber: current.table_number, message: `Mesa ${current.table_number} liberada` };
 }
 
 app.get('/api/admin/pos/tables', authenticateToken, (req, res) => {
   try {
     const orders = db.prepare(`SELECT o.*, COUNT(i.id) AS item_count FROM pos_orders o LEFT JOIN pos_order_items i ON i.order_id = o.id WHERE o.status IN ('open', 'sent') GROUP BY o.id ORDER BY o.table_number`).all();
-    const activeOrders = new Map(orders.map(order => [order.table_number, order]));
+    const validOrders = orders.filter(order => Number(order.item_count || 0) > 0 || Number(order.total || 0) > 0);
+    const activeOrders = new Map(validOrders.map(order => [order.table_number, order]));
     res.json(Array.from({ length: 14 }, (_, index) => {
       const tableNumber = index + 1;
       const order = activeOrders.get(tableNumber);
@@ -449,6 +489,32 @@ app.get('/api/admin/pos/tables', authenticateToken, (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.post('/api/admin/pos/tables/:tableNumber/liberar', authenticateToken, (req, res) => {
+  const result = releasePosTableByNumber(req.params.tableNumber);
+  if (!result.released) {
+    return result.message === 'La mesa ya está libre'
+      ? res.status(200).json({ ok: true, ...result })
+      : res.status(400).json({ error: result.message });
+  }
+  res.status(200).json({ ok: true, ...result });
+});
+
+app.put('/api/mesas/:id/liberar', authenticateToken, (req, res) => {
+  const result = releasePosTableByNumber(req.params.id);
+  if (!result.released) {
+    return result.message === 'La mesa ya está libre'
+      ? res.status(200).json({ ok: true, ...result })
+      : res.status(400).json({ error: result.message });
+  }
+  res.status(200).json({ ok: true, ...result });
+});
+
+app.post('/api/pedidos/:id/cerrar', authenticateToken, (req, res) => {
+  const result = closePosOrderById(req.params.id);
+  if (!result.released) return res.status(400).json({ error: result.message });
+  res.status(200).json({ ok: true, ...result });
 });
 
 app.post('/api/admin/pos/orders', authenticateToken, (req, res) => {
@@ -480,14 +546,29 @@ function buildPosPrintPayload(order, req, type = 'kitchen') {
     customer_address: req.body.customer_address || '',
     gps_url: req.body.gps_url || '',
     notes: order.notes || req.body.notes || '',
-    items: (Array.isArray(order.items) ? order.items : []).map(item => ({
-      ...item,
-      quantity: Number(item.quantity || 1),
-      unit_price: Number(item.unit_price || 0),
-      price: Number(item.unit_price || 0),
-      name: item.name || 'Producto',
-      description: item.description || ''
-    })),
+    items: (Array.isArray(order.items) ? order.items : []).map(item => {
+      const cleanItem = { ...item };
+      if (normalizedType === 'cliente') {
+        delete cleanItem.nota;
+        delete cleanItem.nota_item;
+        delete cleanItem.notes;
+        delete cleanItem.note;
+        delete cleanItem.description;
+        delete cleanItem.observacion;
+        delete cleanItem.observaciones;
+      } else {
+        cleanItem.note = cleanItem.note || cleanItem.nota || cleanItem.notes || cleanItem.observacion || cleanItem.observaciones || '';
+      }
+      return {
+        ...cleanItem,
+        quantity: Number(cleanItem.quantity || 1),
+        unit_price: Number(cleanItem.unit_price || cleanItem.price || 0),
+        price: Number(cleanItem.unit_price || cleanItem.price || 0),
+        name: cleanItem.name || 'Producto',
+        description: normalizedType === 'cliente' ? '' : (cleanItem.description || ''),
+        note: normalizedType === 'cliente' ? '' : (cleanItem.note || '')
+      };
+    }),
     subtotal: Number(order.subtotal || 0),
     service: Number(order.service || 0),
     tax: Number(order.tax || 0),
@@ -575,7 +656,12 @@ app.patch('/api/admin/pos/orders/:id', authenticateToken, (req, res) => {
   if (!current) return res.status(404).json({ error: 'Cuenta no encontrada' });
   if (current.status === 'paid' || current.status === 'cancelled') return res.status(400).json({ error: 'La cuenta ya está cerrada' });
   const items = Array.isArray(req.body.items) ? req.body.items : current.items;
-  const cleanItems = items.map(item => ({ productId: String(item.productId || item.product_id || ''), quantity: Math.max(1, Math.floor(Number(item.quantity) || 1)), description: String(item.description || '').trim() })).filter(item => item.productId);
+  const cleanItems = items.map(item => ({
+    productId: String(item.productId || item.product_id || ''),
+    quantity: Math.max(1, Math.floor(Number(item.quantity) || 1)),
+    description: String(item.description || '').trim(),
+    note: String(item.note || '').trim()
+  })).filter(item => item.productId);
 
   try {
     const products = cleanItems.length ? db.prepare(`SELECT id, name, price FROM products WHERE id IN (${cleanItems.map(() => '?').join(',')}) AND available = 1`).all(...cleanItems.map(item => item.productId)) : [];
@@ -586,19 +672,26 @@ app.patch('/api/admin/pos/orders/:id', authenticateToken, (req, res) => {
       return { ...item, name: product.name, unitPrice: Number(product.price) };
     });
     const subtotal = resolvedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-    const nextStatus = req.body.status === 'sent' ? 'sent' : req.body.status === 'paid' ? 'paid' : 'open';
+    const nextStatus = req.body.status === 'sent' ? 'sent' : req.body.status === 'paid' ? 'paid' : (resolvedItems.length === 0 ? 'cancelled' : 'open');
     const transaction = db.transaction(() => {
       db.prepare(`DELETE FROM pos_order_items WHERE order_id = ?`).run(orderId);
-      const insertItem = db.prepare(`INSERT INTO pos_order_items (order_id, product_id, name, unit_price, quantity, description) VALUES (?, ?, ?, ?, ?, ?)`);
-      resolvedItems.forEach(item => insertItem.run(orderId, item.productId, item.name, item.unitPrice, item.quantity, item.description));
-      db.prepare(`UPDATE pos_orders SET status = ?, notes = ?, subtotal = ?, total = ?, payment_method = ?, updated_at = CURRENT_TIMESTAMP, closed_at = CASE WHEN ? = 'paid' THEN CURRENT_TIMESTAMP ELSE closed_at END WHERE id = ?`).run(nextStatus, String(req.body.notes || '').trim(), subtotal, subtotal, String(req.body.paymentMethod || ''), nextStatus, orderId);
+      const insertItem = db.prepare(`INSERT INTO pos_order_items (order_id, product_id, name, unit_price, quantity, description, note) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+      resolvedItems.forEach(item => insertItem.run(orderId, item.productId, item.name, item.unitPrice, item.quantity, item.description, item.note));
+      db.prepare(`UPDATE pos_orders SET status = ?, notes = ?, subtotal = ?, total = ?, payment_method = ?, updated_at = CURRENT_TIMESTAMP, closed_at = CASE WHEN ? IN ('paid', 'cancelled') THEN CURRENT_TIMESTAMP ELSE closed_at END WHERE id = ?`).run(nextStatus, String(req.body.notes || '').trim(), subtotal, subtotal, String(req.body.paymentMethod || ''), nextStatus, orderId);
       if (nextStatus === 'paid') {
         const today = db.prepare(`SELECT date('now', 'localtime') AS sale_date`).get().sale_date;
         db.prepare(`INSERT INTO daily_sales (sale_date, total, orders, tables_served, average_ticket, updated_at) VALUES (?, ?, 1, 1, ?, CURRENT_TIMESTAMP) ON CONFLICT(sale_date) DO UPDATE SET total = daily_sales.total + excluded.total, orders = daily_sales.orders + 1, tables_served = daily_sales.tables_served + 1, average_ticket = (daily_sales.total + excluded.total) / (daily_sales.orders + 1), updated_at = CURRENT_TIMESTAMP`).run(today, subtotal, subtotal);
       }
     });
     transaction();
-    res.json(getPosOrder(orderId));
+    const updatedOrder = getPosOrder(orderId);
+    if (updatedOrder && updatedOrder.status === 'cancelled') {
+      updatedOrder.items = [];
+      updatedOrder.subtotal = 0;
+      updatedOrder.total = 0;
+      updatedOrder.notes = '';
+    }
+    res.json(updatedOrder);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

@@ -915,6 +915,16 @@ button { cursor: pointer; }
 .pos-cart .primary-button:disabled,
 .pos-cart .outline-button:disabled { cursor: not-allowed; opacity: 0.5; }
 .pos-cart .pos-item-description { display: none; }
+.pos-cart .pos-item-note {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  padding: 6px 8px;
+  border: 1px solid rgba(29,27,26,0.08);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.5);
+  font-size: 0.72rem;
+}
 .pos-cart .pos-item-actions { gap: 4px; }
 .pos-cart .pos-item-actions .ghost-button { display: inline-flex; }
 .pos-cart .pos-qty-control { gap: 5px; }
@@ -1010,6 +1020,7 @@ button { cursor: pointer; }
 .pos-item-copy { min-width: 0; flex: 1; }
 .pos-item-copy strong { overflow-wrap: anywhere; }
 .pos-item-description { width: 100%; margin-top: 7px; padding: 6px 8px; border: 1px solid rgba(29,27,26,0.08); border-radius: 7px; background: rgba(255,255,255,0.5); font-size: 0.72rem; }
+.pos-item-note { width: 100%; margin-top: 7px; padding: 6px 8px; border: 1px solid rgba(29,27,26,0.08); border-radius: 7px; background: rgba(255,255,255,0.5); font-size: 0.72rem; }
 .pos-item-actions { display: grid; justify-items: end; gap: 6px; }
 .pos-item-actions .ghost-button { padding: 4px 7px; font-size: 0.68rem; }
 .pos-qty-control { display: flex; align-items: center; gap: 8px; }

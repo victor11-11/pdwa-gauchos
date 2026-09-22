@@ -287,14 +287,19 @@ async function loadPosTables() {
 function renderPosTables() {
   if (!tablesGrid) return;
   tablesGrid.innerHTML = posTables.map(table => {
-    const active = table.status !== 'available';
     const order = table.order;
+    const itemCount = Number(order?.item_count || 0);
+    const total = Number(order?.total || 0);
+    const hasVisibleOrder = Boolean(order && (itemCount > 0 || total > 0));
+    const active = table.status !== 'available' && hasVisibleOrder;
+    const shouldShowRelease = Boolean(order && (!hasVisibleOrder || active));
     return `<article class="surface-card table-status-card ${active ? 'is-occupied' : ''}">
       <div class="table-status-top"><strong>Mesa ${table.number}</strong><span class="status-pill ${active ? 'unavailable' : 'available'}">${active ? (table.status === 'sent' ? 'Comanda enviada' : 'Ocupada') : 'Libre'}</span></div>
-      <p>${active ? `${order.item_count || 0} productos · $${Number(order.total || 0).toFixed(2)}` : 'Sin cuenta activa'}</p>
+      <p>${active ? `${itemCount || 0} productos · $${total.toFixed(2)}` : (order && !hasVisibleOrder ? 'Cuenta vacía · requiere liberación' : 'Sin cuenta activa')}</p>
       <div class="table-card-actions">
         <button class="outline-button wide table-action" data-table-number="${table.number}" type="button">${active ? 'Ver cuenta' : 'Abrir mesa'}</button>
         ${active && order?.id ? `<button class="outline-button wide print-order" data-print-order="${order.id}" type="button">Imprimir comanda</button>` : ''}
+        ${shouldShowRelease ? `<button class="ghost-button wide release-table-btn" data-release-table="${table.number}" type="button">Liberar mesa</button>` : ''}
       </div>
     </article>`;
   }).join('');
@@ -334,7 +339,9 @@ function renderPosOrder() {
   if (printKitchenButton) printKitchenButton.disabled = !hasOrder || !items.length;
   if (printSaleButton) printSaleButton.disabled = !hasOrder;
   if (chargeSaleButton) chargeSaleButton.disabled = !hasOrder || !items.length;
-  if (posItems) posItems.innerHTML = hasOrder && items.length ? items.map(item => `<div class="pos-item" data-item-id="${item.id}"><div class="pos-item-copy"><strong>${item.name}</strong><small>${item.quantity}x · $${Number(item.unit_price).toFixed(2)}</small><input class="pos-item-description" data-item-id="${item.id}" value="${escapeHtml(item.description || '')}" placeholder="Descripción para cocina" /></div><div class="pos-item-actions"><span>$${(Number(item.unit_price) * item.quantity).toFixed(2)}</span><div class="pos-qty-control"><button class="pos-quantity-button" data-item-id="${item.id}" data-quantity-change="-1" type="button" aria-label="Disminuir cantidad">−</button><strong>${item.quantity}</strong><button class="pos-quantity-button" data-item-id="${item.id}" data-quantity-change="1" type="button" aria-label="Aumentar cantidad">+</button></div><button class="ghost-button pos-remove-item" data-item-id="${item.id}" type="button" aria-label="Eliminar producto">Eliminar</button></div></div>`).join('') : `<p class="pos-empty">${hasOrder ? 'Agrega productos para abrir la cuenta.' : 'Abre una mesa para comenzar la cuenta.'}</p>`;
+  const releaseTableButton = document.getElementById('release-table-btn');
+  if (releaseTableButton) releaseTableButton.disabled = !hasOrder;
+  if (posItems) posItems.innerHTML = hasOrder && items.length ? items.map(item => `<div class="pos-item" data-item-id="${item.id}"><div class="pos-item-copy"><strong>${item.name}</strong><small>${item.quantity}x · $${Number(item.unit_price).toFixed(2)}</small><input class="pos-item-note" data-item-id="${item.id}" value="${escapeHtml(item.note || '')}" placeholder="Nota del ítem (ej. sin cebolla)" /><input class="pos-item-description" data-item-id="${item.id}" value="${escapeHtml(item.description || '')}" placeholder="Descripción para cocina" /></div><div class="pos-item-actions"><span>$${(Number(item.unit_price) * item.quantity).toFixed(2)}</span><div class="pos-qty-control"><button class="pos-quantity-button" data-item-id="${item.id}" data-quantity-change="-1" type="button" aria-label="Disminuir cantidad">−</button><strong>${item.quantity}</strong><button class="pos-quantity-button" data-item-id="${item.id}" data-quantity-change="1" type="button" aria-label="Aumentar cantidad">+</button></div><button class="ghost-button pos-remove-item" data-item-id="${item.id}" type="button" aria-label="Eliminar producto">Eliminar</button></div></div>`).join('') : `<p class="pos-empty">${hasOrder ? 'Agrega productos para abrir la cuenta.' : 'Abre una mesa para comenzar la cuenta.'}</p>`;
   const subtotal = Number(activePosOrder?.subtotal || 0);
   const totalRef = Number(activePosOrder?.total || 0);
   const activeRate = Number((window.__bcvRate || 852.41));
@@ -348,17 +355,44 @@ function renderPosOrder() {
 
 async function savePosOrder(status = 'open', paymentMethod = '') {
   if (!activePosOrder) return null;
-  const items = (activePosOrder.items || []).map(item => ({ productId: item.product_id, quantity: item.quantity, description: item.description || '' }));
+  const items = (activePosOrder.items || []).map(item => ({
+    productId: item.product_id,
+    quantity: item.quantity,
+    description: item.description || '',
+    note: item.note || ''
+  }));
   const res = await fetch(`${API_URL}/admin/pos/orders/${activePosOrder.id}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({ items, notes: posNotes?.value || '', status, paymentMethod })
   });
   const order = await readApiJson(res);
   if (!res.ok) throw new Error(order.error || 'No se pudo actualizar la cuenta');
-  activePosOrder = order;
+  activePosOrder = order && (order.status === 'cancelled' || order.status === 'available' || !order.items?.length) ? null : order;
   renderPosOrder();
   await loadPosTables();
   return activePosOrder;
+}
+
+async function releaseTableOrder(tableNumber, orderId = null) {
+  const targetTable = Number(tableNumber ?? activePosOrder?.table_number ?? 0);
+  if (!targetTable && !orderId) return;
+  if (!confirm(`¿Liberar la mesa ${targetTable || activePosOrder?.table_number}?`)) return;
+
+  try {
+    const endpoint = orderId ? `${API_URL}/pedidos/${orderId}/cerrar` : `${API_URL}/admin/pos/tables/${targetTable}/liberar`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+    });
+    const data = await readApiJson(res);
+    if (!res.ok) throw new Error(data.error || 'No se pudo liberar la mesa');
+    activePosOrder = null;
+    renderPosOrder();
+    await loadPosTables();
+    showNotice(data.message || 'Mesa liberada.');
+  } catch (err) {
+    showNotice(err.message, 'error');
+  }
 }
 
 document.addEventListener('click', async event => {
@@ -375,6 +409,12 @@ document.addEventListener('click', async event => {
   }
   const tableButton = event.target.closest('.table-action');
   if (tableButton) await openPosTable(Number(tableButton.dataset.tableNumber));
+
+  const releaseTableBtn = event.target.closest('.release-table-btn');
+  if (releaseTableBtn) {
+    await releaseTableOrder(Number(releaseTableBtn.dataset.releaseTable));
+    return;
+  }
 
   const printOrderButton = event.target.closest('.print-order');
   if (printOrderButton) {
@@ -403,7 +443,7 @@ async function addProductToOrder(productId) {
   if (!product || !activePosOrder) return;
   const existing = activePosOrder.items.find(item => item.product_id === product.id);
   if (existing) existing.quantity += 1;
-  else activePosOrder.items.push({ product_id: product.id, name: product.name, unit_price: product.price, quantity: 1, description: '' });
+else activePosOrder.items.push({ product_id: product.id, name: product.name, unit_price: product.price, quantity: 1, description: '', note: '' });
   try {
     await savePosOrder();
   } catch (err) {
@@ -411,13 +451,44 @@ async function addProductToOrder(productId) {
   }
 }
 
+async function persistItemField(itemId, fieldName, value) {
+  if (!activePosOrder) return;
+  const item = activePosOrder.items.find(orderItem => String(orderItem.id) === String(itemId));
+  if (!item) return;
+  item[fieldName] = String(value || '').trim();
+  try {
+    await savePosOrder();
+  } catch (err) {
+    showNotice(err.message, 'error');
+  }
+}
+
+document.addEventListener('keydown', async event => {
+  const descriptionInput = event.target.closest('.pos-item-description');
+  if (descriptionInput && event.key === 'Enter') {
+    event.preventDefault();
+    await persistItemField(descriptionInput.dataset.itemId, 'description', descriptionInput.value);
+    descriptionInput.blur();
+    return;
+  }
+
+  const noteInput = event.target.closest('.pos-item-note');
+  if (noteInput && event.key === 'Enter') {
+    event.preventDefault();
+    await persistItemField(noteInput.dataset.itemId, 'note', noteInput.value);
+    noteInput.blur();
+  }
+});
+
 document.addEventListener('change', async event => {
   const descriptionInput = event.target.closest('.pos-item-description');
-  if (!descriptionInput || !activePosOrder) return;
-  const item = activePosOrder.items.find(orderItem => String(orderItem.id) === descriptionInput.dataset.itemId);
-  if (item) {
-    item.description = descriptionInput.value.trim();
-    try { await savePosOrder(); } catch (err) { showNotice(err.message, 'error'); }
+  if (descriptionInput && activePosOrder) {
+    await persistItemField(descriptionInput.dataset.itemId, 'description', descriptionInput.value);
+  }
+
+  const noteInput = event.target.closest('.pos-item-note');
+  if (noteInput && activePosOrder) {
+    await persistItemField(noteInput.dataset.itemId, 'note', noteInput.value);
   }
 });
 
@@ -431,8 +502,29 @@ if (backToTablesButton) backToTablesButton.addEventListener('click', () => {
 });
 
 if (sendCommandButton) sendCommandButton.addEventListener('click', async () => {
-  try { await savePosOrder('sent'); showNotice('Comanda enviada a cocina.'); } catch (err) { showNotice(err.message, 'error'); }
+  try {
+    await savePosOrder('sent');
+    showNotice('Comanda enviada a cocina.');
+    await loadPosTables();
+  } catch (err) { showNotice(err.message, 'error'); }
 });
+
+setInterval(() => {
+  if (document.visibilityState === 'visible') {
+    loadPosTables();
+    if (activePosOrder) {
+      const orderId = activePosOrder.id;
+      fetch(`${API_URL}/admin/pos/orders/${orderId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(async (res) => {
+        if (!res.ok) return;
+        const order = await readApiJson(res);
+        activePosOrder = order;
+        renderPosOrder();
+      }).catch(() => {});
+    }
+  }
+}, 15000);
 
 async function printKitchenOrder(orderId) {
   const order = activePosOrder && activePosOrder.id === orderId ? activePosOrder : null;
@@ -550,17 +642,26 @@ if (chargeSaleButton) chargeSaleButton.addEventListener('click', async () => {
   if (!activePosOrder) return;
   if (!confirm(`¿Cerrar y cobrar la cuenta de la mesa ${activePosOrder.table_number} por $${Number(activePosOrder.total).toFixed(2)}?`)) return;
   try {
-    await savePosOrder('paid', 'efectivo');
-    const orderId = activePosOrder?.id;
-    activePosOrder = null;
-    renderPosOrder();
+    const orderId = activePosOrder.id;
+    const tableNumber = activePosOrder.table_number;
+    const updatedOrder = await savePosOrder('paid', 'efectivo');
+    if (updatedOrder) {
+      activePosOrder = updatedOrder;
+    }
     if (orderId) await printPosReceipt(orderId);
+    await releaseTableOrder(tableNumber, orderId);
     loadDashboard();
-    showNotice('Cuenta cobrada y mesa liberada.');
   } catch (err) {
     showNotice(err.message, 'error');
   }
 });
+
+if (document.getElementById('release-table-btn')) {
+  document.getElementById('release-table-btn').addEventListener('click', async () => {
+    if (!activePosOrder) return;
+    await releaseTableOrder(activePosOrder.table_number, activePosOrder.id);
+  });
+}
 
 async function printPosReceipt(orderId) {
   if (!orderId) return;

@@ -85,14 +85,14 @@ const formatKitchenItem = (item) => {
   const name = normalizeText(item.name || item.product_name || item.item || 'Producto', 'Producto');
   const cleanName = toPrinterAscii(name).slice(0, 28);
   const line = `${quantity}x ${cleanName}`;
-  const detail = item.description || item.notes;
+  const detail = item.nota || item.notes || item.note || item.description || item.observacion || item.observaciones;
 
   if (!detail) {
     return `${DOUBLE_HEIGHT_ON}${line}${DOUBLE_HEIGHT_OFF}`;
   }
 
   const cleanDetail = toPrinterAscii(detail).slice(0, 38);
-  return `${DOUBLE_HEIGHT_ON}${line}${DOUBLE_HEIGHT_OFF}\n${BOLD_OFF}${DOUBLE_HEIGHT_OFF}   -> ${cleanDetail}`;
+  return `${DOUBLE_HEIGHT_ON}${line}${DOUBLE_HEIGHT_OFF}\n${BOLD_OFF}${DOUBLE_HEIGHT_OFF}   * NOTA: ${cleanDetail}`;
 };
 
 const formatCustomerItem = (item) => {
@@ -156,7 +156,18 @@ export function generarCuentaCliente(order = {}, options = {}) {
   const customerName = normalizeText(order.customer_name || order.cliente || order.client || order.customer || '');
   const customerPhone = normalizeText(order.customer_phone || order.telefono || order.phone || '');
   const tableName = normalizeText(order.mesa || order.table_number || order.table || order.table_name || '');
-  const items = Array.isArray(order.items) ? order.items : [];
+  const rawItems = Array.isArray(order.items) ? order.items : [];
+  const items = rawItems.map(item => {
+    const cleanItem = { ...item };
+    delete cleanItem.nota;
+    delete cleanItem.nota_item;
+    delete cleanItem.notes;
+    delete cleanItem.note;
+    delete cleanItem.description;
+    delete cleanItem.observacion;
+    delete cleanItem.observaciones;
+    return cleanItem;
+  });
   const subtotal = Number(order.subtotal ?? items.reduce((sum, item) => {
     const quantity = Number(item.quantity ?? item.qty ?? 1);
     const unitPrice = Number(item.unit_price ?? item.price ?? 0);
