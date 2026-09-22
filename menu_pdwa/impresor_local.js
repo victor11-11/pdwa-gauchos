@@ -19,12 +19,23 @@ const printerName = process.env.PRINTER_NAME || 'POS-80';
 
 const makeTempTicketPath = () => {
   const tempDir = os.tmpdir();
-  return path.join(tempDir, `ticket_pos_${Date.now()}_${Math.random().toString(16).slice(2)}.txt`);
+  return path.join(tempDir, `ticket_pos_${Date.now()}_${Math.random().toString(16).slice(2)}.bin`);
+};
+
+const decodeEscPosPayload = (input) => {
+  const raw = Buffer.isBuffer(input) ? input : String(input || '');
+  const asBinary = Buffer.isBuffer(raw) ? raw : Buffer.from(raw, 'binary');
+  const text = asBinary.toString('binary');
+  return Buffer.from(
+    text.replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))),
+    'binary'
+  );
 };
 
 const printOnClient = async (content, printer = printerName) => {
   const tempPath = makeTempTicketPath();
-  fs.writeFileSync(tempPath, content, 'binary');
+  const bufferComandos = decodeEscPosPayload(content);
+  fs.writeFileSync(tempPath, bufferComandos);
 
   try {
     if (process.platform === 'linux') {
@@ -82,7 +93,7 @@ socket.on('imprimir_ticket', async (payload) => {
 
   const tipoLabel = tipo || 'ticket';
   console.log(`[${printerName}] Recibida impresión remota (${tipoLabel})`);
-  await printOnClient(String(datosEscPos), printerName);
+  await printOnClient(datosEscPos, printerName);
 });
 
 process.on('SIGINT', () => {

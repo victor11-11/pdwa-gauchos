@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -5,11 +6,13 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 const printerName = process.env.PRINTER_NAME || 'POS-80';
 const PAPER_WIDTH = 48;
-const CUT_SEQUENCE = '\\x1D\\x56\\x41\\x00';
-const DOUBLE_HEIGHT_ON = '\\x1D\\x21\\x01';
-const DOUBLE_HEIGHT_OFF = '\\x1D\\x21\\x00';
-const BOLD_ON = '\\x1B\\x45\\x01';
-const BOLD_OFF = '\\x1B\\x45\\x00';
+const CUT_SEQUENCE = Buffer.from([0x1D, 0x56, 0x41, 0x00]);
+const DOUBLE_HEIGHT_ON = Buffer.from([0x1D, 0x21, 0x01]);
+const DOUBLE_HEIGHT_OFF = Buffer.from([0x1D, 0x21, 0x00]);
+const BOLD_ON = Buffer.from([0x1B, 0x45, 0x01]);
+const BOLD_OFF = Buffer.from([0x1B, 0x45, 0x00]);
+
+const toEscPosBinary = (value = '') => Buffer.from(String(value ?? '').replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))), 'binary');
 
 const normalizeText = (value, fallback = '') => {
   if (value === null || value === undefined) return fallback;
@@ -88,11 +91,11 @@ const formatKitchenItem = (item) => {
   const detail = item.nota || item.notes || item.note || item.description || item.observacion || item.observaciones;
 
   if (!detail) {
-    return `${DOUBLE_HEIGHT_ON}${line}${DOUBLE_HEIGHT_OFF}`;
+    return `${DOUBLE_HEIGHT_ON.toString('binary')}${line}${DOUBLE_HEIGHT_OFF.toString('binary')}`;
   }
 
   const cleanDetail = toPrinterAscii(detail).slice(0, 38);
-  return `${DOUBLE_HEIGHT_ON}${line}${DOUBLE_HEIGHT_OFF}\n${BOLD_OFF}${DOUBLE_HEIGHT_OFF}   * NOTA: ${cleanDetail}`;
+  return `${DOUBLE_HEIGHT_ON.toString('binary')}${line}${DOUBLE_HEIGHT_OFF.toString('binary')}\n${BOLD_OFF.toString('binary')}${DOUBLE_HEIGHT_OFF.toString('binary')}   * NOTA: ${cleanDetail}`;
 };
 
 const formatCustomerItem = (item) => {
@@ -145,7 +148,7 @@ export function generarComandaCocina(order = {}, options = {}) {
   lines.push('');
   lines.push('');
   lines.push('');
-  lines.push(CUT_SEQUENCE);
+  lines.push(CUT_SEQUENCE.toString('binary'));
 
   return lines.join('\n');
 }
@@ -241,17 +244,13 @@ export async function sendKitchenTicket(order = {}, options = {}) {
   const ticket = options.type === 'cliente'
     ? generarCuentaCliente(order, options)
     : generarComandaCocina(order, options);
-  const safeTicket = String(ticket)
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/\$/g, '\\$')
-    .replace(/`/g, '\\`')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r');
 
-  const command = `printf '%b' "${safeTicket}" | lp -d ${printer} -o raw`;
+  const rawTicket = toEscPosBinary(ticket);
+  const tempFile = `/tmp/${Date.now()}_${Math.random().toString(16).slice(2)}.bin`;
+  fs.writeFileSync(tempFile, rawTicket);
 
   try {
+    const command = `lp -d ${printer} -o raw "${tempFile}"`;
     const result = await execAsync(command, { timeout: 20000, maxBuffer: 1024 * 1024 });
     return {
       success: true,
@@ -263,5 +262,11 @@ export async function sendKitchenTicket(order = {}, options = {}) {
   } catch (error) {
     const message = error?.stderr || error?.message || 'No se pudo enviar la comanda a la impresora.';
     throw new Error(message);
+  } finally {
+    try {
+      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+    } catch {
+      // Ignorar limpieza del archivo temporal si el sistema deja de estar disponible.
+    }
   }
 }
