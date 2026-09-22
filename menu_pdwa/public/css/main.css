@@ -904,6 +904,9 @@ button { cursor: pointer; }
 }
 .table-toolbar h3 { margin: 0; font-size: 1rem; }
 .table-toolbar p { color: var(--muted); margin-top: 3px; font-size: 0.75rem; }
+.table-toolbar-actions { display: flex; align-items: end; gap: 12px; }
+.table-filter { display: grid; gap: 5px; color: var(--muted); font-size: 0.72rem; font-weight: 700; }
+.table-filter select { min-width: 150px; }
 .search-field {
   display: flex;
   align-items: center;
@@ -1025,6 +1028,8 @@ button { cursor: pointer; }
   .dashboard-intro { flex-direction: column; align-items: flex-start; }
   .content-grid, .two-columns, .three-columns, .pos-actions { grid-template-columns: 1fr; }
   .section-heading, .table-toolbar { flex-direction: column; align-items: flex-start; }
+  .table-toolbar-actions { width: 100%; flex-direction: column; align-items: stretch; }
+  .table-filter select { width: 100%; }
   .search-field { width: 100%; min-width: 0; }
   .form-actions { flex-wrap: wrap; }
 }

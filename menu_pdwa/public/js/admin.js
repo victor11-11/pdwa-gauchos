@@ -39,6 +39,7 @@ const catNameInput = document.getElementById('cat-name');
 const catCustomCheck = document.getElementById('cat-customizable');
 const catIceCreamCheck = document.getElementById('cat-icecream');
 const productSearch = document.getElementById('product-search');
+const productFilterCategory = document.getElementById('product-filter-category');
 const productCount = document.getElementById('product-count');
 const adminUserForm = document.getElementById('admin-user-form');
 const adminUserId = document.getElementById('admin-user-id');
@@ -280,6 +281,13 @@ async function loadCategories() {
         <option value="${c.id}">${c.name}</option>
       `).join('');
     }
+    if (productFilterCategory) {
+      const selectedCategory = productFilterCategory.value;
+      productFilterCategory.innerHTML = '<option value="all">Todas</option>' + categories.map(c => `
+        <option value="${c.id}">${c.name}</option>
+      `).join('');
+      productFilterCategory.value = categories.some(c => c.id === selectedCategory) ? selectedCategory : 'all';
+    }
   } catch (err) {
     console.error('Error al cargar categorías:', err);
   }
@@ -301,7 +309,7 @@ async function loadProducts() {
 
     const products = await res.json();
     productsList.innerHTML = products.map(p => `
-      <tr>
+      <tr data-category-id="${p.category_id}">
         <td><strong>${p.name}</strong>${p.description ? `<br><small style="color:#666;">${p.description}</small>` : ''}</td>
         <td><span class="badge">${p.category_name || p.category_id}</span></td>
         <td>$${Number(p.price).toFixed(2)}</td>
@@ -324,18 +332,29 @@ function updateProductCount() {
   if (!productCount || !productsList) return;
   const rows = [...productsList.querySelectorAll('tr')];
   const visible = rows.filter(row => row.style.display !== 'none').length;
-  productCount.textContent = productSearch?.value ? `${visible} resultado${visible === 1 ? '' : 's'}` : `${rows.length} producto${rows.length === 1 ? '' : 's'} registrados`;
+  const hasFilter = productSearch?.value.trim() || productFilterCategory?.value !== 'all';
+  productCount.textContent = hasFilter ? `${visible} resultado${visible === 1 ? '' : 's'}` : `${rows.length} producto${rows.length === 1 ? '' : 's'} registrados`;
 }
 
 function filterProducts() {
   const query = productSearch.value.trim().toLowerCase();
+  const category = productFilterCategory?.value || 'all';
   productsList.querySelectorAll('tr').forEach(row => {
-    row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
+    const matchesQuery = row.textContent.toLowerCase().includes(query);
+    const matchesCategory = category === 'all' || row.dataset.categoryId === category;
+    row.style.display = matchesQuery && matchesCategory ? '' : 'none';
   });
   updateProductCount();
 }
 
 if (productSearch) productSearch.addEventListener('input', filterProducts);
+if (productFilterCategory) productFilterCategory.addEventListener('change', filterProducts);
+if (prodCategorySelect) prodCategorySelect.addEventListener('change', () => {
+  if (productFilterCategory) {
+    productFilterCategory.value = prodCategorySelect.value;
+    filterProducts();
+  }
+});
 
 async function loadExtras(type = extraFilterType?.value || 'all') {
   try {

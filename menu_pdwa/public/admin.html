@@ -356,9 +356,17 @@
                     <h3>Catálogo publicado</h3>
                     <p id="product-count">Todos los productos</p>
                   </div>
-                  <div class="search-field">
-                    <span>⌕</span>
-                    <input id="product-search" type="search" placeholder="Buscar producto o categoría" aria-label="Buscar producto o categoría" />
+                  <div class="table-toolbar-actions">
+                    <label class="table-filter" for="product-filter-category">
+                      <span>Filtrar por categoría</span>
+                      <select id="product-filter-category">
+                        <option value="all">Todas</option>
+                      </select>
+                    </label>
+                    <div class="search-field">
+                      <span>⌕</span>
+                      <input id="product-search" type="search" placeholder="Buscar producto o categoría" aria-label="Buscar producto o categoría" />
+                    </div>
                   </div>
                 </div>
                 <div class="table-scroll">
