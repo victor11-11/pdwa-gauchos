@@ -1,30 +1,81 @@
 const CART_STORAGE_KEY = 'menu_cart_data';
+const CART_SESSION_ID_KEY = 'menu_cart_session_id';
 
 class CartState {
   constructor() {
+    this.sessionId = this.getSessionId();
     this.items = this.loadCart();
+  }
+
+  createSessionId() {
+    const randomPart = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    return `cart-${randomPart}`;
+  }
+
+  getSessionId() {
+    try {
+      let sessionId = sessionStorage.getItem(CART_SESSION_ID_KEY);
+      if (!sessionId) {
+        sessionId = this.createSessionId();
+        sessionStorage.setItem(CART_SESSION_ID_KEY, sessionId);
+      }
+      return sessionId;
+    } catch (e) {
+      console.warn('No se pudo leer el sessionId del carrito:', e);
+      return this.createSessionId();
+    }
+  }
+
+  getStorageKey() {
+    return `${CART_STORAGE_KEY}:${this.sessionId}`;
   }
 
   loadCart() {
     try {
-      const data = localStorage.getItem(CART_STORAGE_KEY);
-      return data ? JSON.parse(data) : [];
+      const key = this.getStorageKey();
+      const data = sessionStorage.getItem(key);
+      if (data) {
+        return JSON.parse(data);
+      }
+
+      const legacyData = localStorage.getItem(CART_STORAGE_KEY);
+      if (legacyData) {
+        const parsed = JSON.parse(legacyData);
+        if (Array.isArray(parsed)) {
+          sessionStorage.setItem(key, JSON.stringify(parsed));
+          localStorage.removeItem(CART_STORAGE_KEY);
+          return parsed;
+        }
+      }
+
+      return [];
     } catch (e) {
-      console.error('Error al cargar el carrito desde localStorage:', e);
+      console.error('Error al cargar el carrito desde la sesión local:', e);
       return [];
     }
   }
 
   saveCart() {
     try {
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(this.items));
+      sessionStorage.setItem(this.getStorageKey(), JSON.stringify(this.items));
     } catch (e) {
       console.error('Error al guardar el carrito:', e);
     }
   }
 
   getItems() {
-    return this.items || [];
+    return Array.isArray(this.items) ? this.items : [];
+  }
+
+  toOrderPayload() {
+    return {
+      sessionId: this.sessionId,
+      items: this.getItems().map(item => ({ ...item })),
+      createdAt: new Date().toISOString()
+    };
   }
 
   addItem(item) {
@@ -48,8 +99,6 @@ class CartState {
     this.saveCart();
   }
 
-  // --- NUEVOS MÉTODOS PARA EL MANEJO DEL CARRITO ---
-
   updateQuantity(id, delta) {
     const item = this.items.find(i => i.id === id);
     if (item) {
@@ -69,7 +118,11 @@ class CartState {
 
   clearCart() {
     this.items = [];
-    this.saveCart();
+    try {
+      sessionStorage.removeItem(this.getStorageKey());
+    } catch (e) {
+      console.error('Error al limpiar la sesión del carrito:', e);
+    }
   }
 }
 

@@ -482,9 +482,13 @@ function sendWhatsAppOrder() {
   const orderType = document.getElementById('order-type')?.value || 'Comer Aquí';
   const notes = document.getElementById('order-notes')?.value.trim() || 'Ninguna';
 
+  const orderPayload = cartState.toOrderPayload();
+  const sessionId = orderPayload.sessionId;
+
   let message = `*--- NUEVA COMANDA POS ---*\n`;
   message += `📌 *Tipo de Orden:* ${orderType}\n`;
-  message += `📍 *Ubicación/Mesa:* ${table}\n\n`;
+  message += `📍 *Ubicación/Mesa:* ${table}\n`;
+  message += `🆔 *Session ID:* ${sessionId}\n\n`;
   message += `*Detalle del Pedido:*\n`;
 
   items.forEach(item => {
@@ -511,6 +515,10 @@ function sendWhatsAppOrder() {
 
   const encodedUrl = `https://wa.me/${RESTAURANT_WHATSAPP}?text=${encodeURIComponent(message)}`;
   window.open(encodedUrl, '_blank');
+
+  cartState.clearCart();
+  updateCartBar();
+  closeCartModal();
 }
 
 // 7. DELEGACIÓN DE EVENTOS GLOBAL
