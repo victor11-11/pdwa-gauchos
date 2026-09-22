@@ -1,11 +1,13 @@
 import express from 'express';
+import http from 'http';
 import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { sendKitchenTicket } from './utils/printer.js';
+import { Server } from 'socket.io';
+import { generarComandaCocina, generarCuentaCliente, sendKitchenTicket } from './utils/printer.js';
 import { fetchBCVRates, loadRates, setActiveCurrency, startBCVUpdater } from './utils/bcv.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,11 +16,49 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = 'clave_secreta_super_segura_menu_2026';
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  },
+  transports: ['polling', 'websocket'],
+  allowEIO3: true
+});
+
+const shouldUseSocketPrint = (req = null) => {
+  const host = String((req?.headers?.host || process.env.HOST || 'localhost')).toLowerCase();
+  const forwardedHost = String(req?.headers?.['x-forwarded-host'] || '').toLowerCase();
+  const runtimeHost = String(process.env.HOST || '').toLowerCase();
+  const isRender = Boolean(process.env.RENDER) || /onrender\.com|render\.com/.test(host) || /onrender\.com|render\.com/.test(forwardedHost) || /onrender\.com|render\.com/.test(runtimeHost);
+  const isLocalHost = /localhost|127\.0\.0\.1|::1/.test(host) || /localhost|127\.0\.0\.1|::1/.test(forwardedHost) || /localhost|127\.0\.0\.1|::1/.test(runtimeHost);
+  return isRender || (!isLocalHost && !req?.hostname?.includes('localhost'));
+};
+
+const emitRemoteTicket = (tipo, datosEscPos) => {
+  if (!datosEscPos) return false;
+  io.emit('imprimir_ticket', { tipo, datosEscPos });
+  return true;
+};
 
 app.use(cors());
 app.use(express.json());
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.use((req, res, next) => {
+  if (req.path.startsWith('/socket.io/')) {
+    return next();
+  }
+  next();
+});
+
+io.on('connection', (socket) => {
+  console.log('🖨️ Cliente de impresión conectado:', socket.id);
+  socket.on('disconnect', () => {
+    console.log('🔌 Cliente de impresión desconectado:', socket.id);
+  });
+});
 
 startBCVUpdater();
 
@@ -588,6 +628,20 @@ app.post('/api/pedidos/:id/imprimir', authenticateToken, async (req, res) => {
     const requestedType = String(req.body.tipo || req.body.type || 'kitchen').toLowerCase();
     const printType = requestedType === 'cuenta' || requestedType === 'cliente' ? 'cliente' : 'kitchen';
     const payload = buildPosPrintPayload(order, req, printType);
+
+    if (shouldUseSocketPrint(req)) {
+      const datosEscPos = printType === 'cliente'
+        ? generarCuentaCliente(payload, { restaurantName: 'Gauchos', type: printType })
+        : generarComandaCocina(payload, { restaurantName: 'Gauchos', type: printType });
+      emitRemoteTicket(printType, datosEscPos);
+      return res.json({
+        success: true,
+        message: 'Orden de impresión enviada a la ticketera local',
+        orderId: order.id,
+        printType
+      });
+    }
+
     const result = await sendKitchenTicket(payload, { restaurantName: 'Gauchos', type: printType });
 
     res.json({
@@ -611,6 +665,18 @@ app.post('/api/pedidos/:id/imprimir-cuenta', authenticateToken, async (req, res)
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
 
     const payload = buildPosPrintPayload(order, req, 'cliente');
+
+    if (shouldUseSocketPrint(req)) {
+      const datosEscPos = generarCuentaCliente(payload, { restaurantName: 'Gauchos', type: 'cliente' });
+      emitRemoteTicket('cliente', datosEscPos);
+      return res.json({
+        success: true,
+        message: 'Orden de impresión enviada a la ticketera local',
+        orderId: order.id,
+        printType: 'cliente'
+      });
+    }
+
     const result = await sendKitchenTicket(payload, { restaurantName: 'Gauchos', type: 'cliente' });
 
     res.json({
@@ -638,6 +704,16 @@ app.post('/api/admin/printer/test', authenticateToken, async (req, res) => {
       ],
       total: 13.5
     };
+
+    if (shouldUseSocketPrint(req)) {
+      const datosEscPos = generarComandaCocina(sampleOrder, { restaurantName: 'Gauchos' });
+      emitRemoteTicket('kitchen', datosEscPos);
+      return res.json({
+        success: true,
+        message: 'Orden de impresión enviada a la ticketera local',
+        printer: 'POS-80'
+      });
+    }
 
     const result = await sendKitchenTicket(sampleOrder, { restaurantName: 'Gauchos' });
     res.json({
@@ -868,6 +944,7 @@ app.delete('/api/admin/products/:id', authenticateToken, (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+server.listen(process.env.PORT || 3000, () => {
+  console.log(`🚀 Servidor corriendo en http://localhost:${process.env.PORT || 3000}`);
+  console.log('🔌 Socket.IO habilitado para impresiones remotas.');
 });
