@@ -70,6 +70,7 @@ const posNotes = document.getElementById('pos-notes');
 const posSubtotal = document.getElementById('pos-subtotal');
 const posTotal = document.getElementById('pos-total');
 const sendCommandButton = document.getElementById('send-command-btn');
+const printKitchenButton = document.getElementById('print-kitchen-btn');
 const printSaleButton = document.getElementById('print-sale-btn');
 let posTables = [];
 let posProducts = [];
@@ -155,6 +156,75 @@ function showNotice(message, type = 'success') {
   showNotice.timeout = setTimeout(() => { notice.style.opacity = '0'; }, 2600);
 }
 
+async function loadBcvRates() {
+  try {
+    const res = await fetch('/api/tasas', { cache: 'no-store' });
+    const data = await readApiJson(res);
+    if (!res.ok) throw new Error(data.error || 'No se pudo cargar la tasa BCV');
+
+    const usd = Number(data.tasa_usd || 0);
+    const eur = Number(data.tasa_eur || 0);
+    const active = String(data.moneda_activa || 'USD').toUpperCase();
+    const updated = data.ultima_actualizacion ? new Date(data.ultima_actualizacion).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' }) : 'Sin actualización';
+
+    window.__bcvRate = active === 'EUR' ? eur : usd;
+    if (bcvRateValue) {
+      bcvRateValue.textContent = `USD ${usd.toFixed(2)} · EUR ${eur.toFixed(2)}`;
+    }
+    if (bcvRateMeta) {
+      bcvRateMeta.textContent = `Actualizado ${updated} · Activa: ${active}`;
+    }
+    if (bcvCurrencySelect) {
+      bcvCurrencySelect.value = active;
+    }
+    if (document.getElementById('client-bcv-rate')) {
+      const rate = active === 'EUR' ? eur : usd;
+      document.getElementById('client-bcv-rate').textContent = `${active}: ${rate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs`;
+    }
+    const headerBadge = document.getElementById('bcv-header-badge');
+    if (headerBadge) {
+      const activeRate = active === 'EUR' ? eur : usd;
+      headerBadge.textContent = `Tasa BCV: ${activeRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs/$`;
+    }
+    return data;
+  } catch (err) {
+    console.error('BCV:', err);
+    if (bcvRateMeta) bcvRateMeta.textContent = 'No se pudo cargar la tasa';
+    return null;
+  }
+}
+
+async function refreshBcvRates() {
+  try {
+    const res = await fetch('/api/tasas/actualizar', { method: 'POST' });
+    const data = await readApiJson(res);
+    if (!res.ok) throw new Error(data.error || 'No se pudo actualizar la tasa BCV');
+    await loadBcvRates();
+    showNotice('Tasa BCV actualizada.', 'success');
+    return data;
+  } catch (err) {
+    showNotice(err.message, 'error');
+    return null;
+  }
+}
+
+async function setGlobalCurrency(currency) {
+  try {
+    const res = await fetch('/api/tasas/moneda', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ moneda: currency })
+    });
+    const data = await readApiJson(res);
+    if (!res.ok) throw new Error(data.error || 'No se pudo cambiar la moneda');
+    await loadBcvRates();
+    return data;
+  } catch (err) {
+    showNotice(err.message, 'error');
+    return null;
+  }
+}
+
 function activateView(view) {
   document.querySelectorAll('[data-view]:not(.nav-item)').forEach(section => {
     section.classList.toggle('admin-view-hidden', section.dataset.view !== view);
@@ -222,7 +292,10 @@ function renderPosTables() {
     return `<article class="surface-card table-status-card ${active ? 'is-occupied' : ''}">
       <div class="table-status-top"><strong>Mesa ${table.number}</strong><span class="status-pill ${active ? 'unavailable' : 'available'}">${active ? (table.status === 'sent' ? 'Comanda enviada' : 'Ocupada') : 'Libre'}</span></div>
       <p>${active ? `${order.item_count || 0} productos · $${Number(order.total || 0).toFixed(2)}` : 'Sin cuenta activa'}</p>
-      <button class="outline-button wide table-action" data-table-number="${table.number}" type="button">${active ? 'Ver cuenta' : 'Abrir mesa'}</button>
+      <div class="table-card-actions">
+        <button class="outline-button wide table-action" data-table-number="${table.number}" type="button">${active ? 'Ver cuenta' : 'Abrir mesa'}</button>
+        ${active && order?.id ? `<button class="outline-button wide print-order" data-print-order="${order.id}" type="button">Imprimir comanda</button>` : ''}
+      </div>
     </article>`;
   }).join('');
 }
@@ -258,12 +331,18 @@ function renderPosOrder() {
     posCartCount.textContent = `${itemCount} producto${itemCount === 1 ? '' : 's'}`;
   }
   if (sendCommandButton) sendCommandButton.disabled = !hasOrder || !items.length;
+  if (printKitchenButton) printKitchenButton.disabled = !hasOrder || !items.length;
   if (printSaleButton) printSaleButton.disabled = !hasOrder;
   if (chargeSaleButton) chargeSaleButton.disabled = !hasOrder || !items.length;
   if (posItems) posItems.innerHTML = hasOrder && items.length ? items.map(item => `<div class="pos-item" data-item-id="${item.id}"><div class="pos-item-copy"><strong>${item.name}</strong><small>${item.quantity}x · $${Number(item.unit_price).toFixed(2)}</small><input class="pos-item-description" data-item-id="${item.id}" value="${escapeHtml(item.description || '')}" placeholder="Descripción para cocina" /></div><div class="pos-item-actions"><span>$${(Number(item.unit_price) * item.quantity).toFixed(2)}</span><div class="pos-qty-control"><button class="pos-quantity-button" data-item-id="${item.id}" data-quantity-change="-1" type="button" aria-label="Disminuir cantidad">−</button><strong>${item.quantity}</strong><button class="pos-quantity-button" data-item-id="${item.id}" data-quantity-change="1" type="button" aria-label="Aumentar cantidad">+</button></div><button class="ghost-button pos-remove-item" data-item-id="${item.id}" type="button" aria-label="Eliminar producto">Eliminar</button></div></div>`).join('') : `<p class="pos-empty">${hasOrder ? 'Agrega productos para abrir la cuenta.' : 'Abre una mesa para comenzar la cuenta.'}</p>`;
   const subtotal = Number(activePosOrder?.subtotal || 0);
+  const totalRef = Number(activePosOrder?.total || 0);
+  const activeRate = Number((window.__bcvRate || 852.41));
+  const totalBs = totalRef * activeRate;
   if (posSubtotal) posSubtotal.textContent = `$${subtotal.toFixed(2)}`;
-  if (posTotal) posTotal.textContent = `$${Number(activePosOrder?.total || 0).toFixed(2)}`;
+  if (posTotal) posTotal.textContent = `$${totalRef.toFixed(2)}`;
+  const totalBsEl = document.getElementById('pos-total-bs');
+  if (totalBsEl) totalBsEl.textContent = `${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs.`;
   renderPosCatalog();
 }
 
@@ -296,6 +375,13 @@ document.addEventListener('click', async event => {
   }
   const tableButton = event.target.closest('.table-action');
   if (tableButton) await openPosTable(Number(tableButton.dataset.tableNumber));
+
+  const printOrderButton = event.target.closest('.print-order');
+  if (printOrderButton) {
+    await printKitchenOrder(Number(printOrderButton.dataset.printOrder));
+    return;
+  }
+
   const removeButton = event.target.closest('.pos-remove-item');
   if (removeButton && activePosOrder) {
     activePosOrder.items = activePosOrder.items.filter(item => String(item.id) !== removeButton.dataset.itemId);
@@ -348,7 +434,43 @@ if (sendCommandButton) sendCommandButton.addEventListener('click', async () => {
   try { await savePosOrder('sent'); showNotice('Comanda enviada a cocina.'); } catch (err) { showNotice(err.message, 'error'); }
 });
 
-if (printSaleButton) printSaleButton.addEventListener('click', () => printPosReceipt(activePosOrder));
+async function printKitchenOrder(orderId) {
+  const order = activePosOrder && activePosOrder.id === orderId ? activePosOrder : null;
+  if (!orderId) return;
+  try {
+    const res = await fetch(`${API_URL}/pedidos/${orderId}/imprimir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        customer_name: order ? `Mesa ${order.table_number}` : '',
+        customer_phone: '',
+        customer_address: '',
+        gps_url: ''
+      })
+    });
+    const data = await readApiJson(res);
+    if (!res.ok) throw new Error(data.error || 'No se pudo imprimir la comanda');
+    showNotice(data.message || 'Comanda enviada a la impresora.');
+  } catch (err) {
+    showNotice(err.message, 'error');
+  }
+}
+
+if (printKitchenButton) {
+  printKitchenButton.addEventListener('click', async () => {
+    const orderId = activePosOrder?.id;
+    if (!orderId) return;
+    await printKitchenOrder(orderId);
+  });
+}
+
+if (printSaleButton) {
+  printSaleButton.addEventListener('click', async () => {
+    const orderId = activePosOrder?.id;
+    if (!orderId) return;
+    await printPosReceipt(orderId);
+  });
+}
 
 const globalSearch = document.getElementById('global-search');
 if (globalSearch) {
@@ -388,15 +510,51 @@ if (reportsButton) reportsButton.addEventListener('click', () => {
   showNotice('Mostrando actividad reciente de ventas.');
 });
 
+const printerTestButton = document.getElementById('printer-test-btn');
+if (printerTestButton) {
+  printerTestButton.addEventListener('click', async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/printer/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+      });
+      const data = await readApiJson(res);
+      if (!res.ok) throw new Error(data.error || 'No se pudo ejecutar la prueba de impresión');
+      showNotice(data.message || 'Prueba de impresora enviada.');
+    } catch (err) {
+      showNotice(err.message, 'error');
+    }
+  });
+}
+
 const chargeSaleButton = document.getElementById('charge-sale-btn');
+const bcvRateValue = document.getElementById('bcv-rate-value');
+const bcvRateMeta = document.getElementById('bcv-rate-meta');
+const bcvCurrencySelect = document.getElementById('bcv-currency-select');
+const bcvRefreshButton = document.getElementById('bvc-refresh-btn');
+window.__bcvRate = 852.41;
+
+if (bcvRefreshButton) {
+  bcvRefreshButton.addEventListener('click', refreshBcvRates);
+}
+
+if (bcvCurrencySelect) {
+  bcvCurrencySelect.addEventListener('change', async (event) => {
+    await setGlobalCurrency(event.target.value);
+  });
+}
+
+loadBcvRates();
+
 if (chargeSaleButton) chargeSaleButton.addEventListener('click', async () => {
   if (!activePosOrder) return;
   if (!confirm(`¿Cerrar y cobrar la cuenta de la mesa ${activePosOrder.table_number} por $${Number(activePosOrder.total).toFixed(2)}?`)) return;
   try {
     await savePosOrder('paid', 'efectivo');
-    printPosReceipt(activePosOrder);
+    const orderId = activePosOrder?.id;
     activePosOrder = null;
     renderPosOrder();
+    if (orderId) await printPosReceipt(orderId);
     loadDashboard();
     showNotice('Cuenta cobrada y mesa liberada.');
   } catch (err) {
@@ -404,18 +562,25 @@ if (chargeSaleButton) chargeSaleButton.addEventListener('click', async () => {
   }
 });
 
-function printPosReceipt(order) {
-  if (!order) return;
-  const receiptWindow = window.open('', '_blank', 'width=420,height=720');
-  if (!receiptWindow) {
-    showNotice('El navegador bloqueó la ventana de impresión.', 'error');
-    return;
+async function printPosReceipt(orderId) {
+  if (!orderId) return;
+  try {
+    const res = await fetch(`${API_URL}/pedidos/${orderId}/imprimir-cuenta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        customer_name: '',
+        customer_phone: '',
+        customer_address: '',
+        gps_url: ''
+      })
+    });
+    const data = await readApiJson(res);
+    if (!res.ok) throw new Error(data.error || 'No se pudo imprimir la cuenta');
+    showNotice(data.message || 'Cuenta enviada a la impresora.');
+  } catch (err) {
+    showNotice(err.message, 'error');
   }
-  const items = (order.items || []).map(item => `<div class="line"><span>${item.quantity}x ${escapeHtml(item.name)}${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}</span><strong>$${(Number(item.unit_price) * item.quantity).toFixed(2)}</strong></div>`).join('');
-  receiptWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cuenta mesa ${order.table_number}</title><style>@page{size:80mm auto;margin:4mm}*{box-sizing:border-box}body{width:72mm;margin:0;font:12px/1.35 monospace;color:#111}.center{text-align:center}h1{font-size:18px;margin:0 0 4px}.muted{color:#555}.rule{border-top:1px dashed #111;margin:8px 0}.line{display:flex;justify-content:space-between;gap:8px;margin:6px 0}.line span{max-width:52mm}.line small{display:block;color:#555}.total{font-size:16px;font-weight:bold}.actions{margin-top:16px;display:flex;gap:8px}.actions button{padding:8px;border:1px solid #111;background:#fff}@media print{.actions{display:none}}</style></head><body><div class="center"><h1>D'ROMA</h1><div>Cuenta / Comanda</div><div>Mesa ${order.table_number} · ${new Date().toLocaleString('es-VE')}</div></div><div class="rule"></div>${items || '<div>Sin productos</div>'}<div class="rule"></div><div class="line"><span>Subtotal</span><strong>$${Number(order.subtotal).toFixed(2)}</strong></div><div class="line total"><span>TOTAL</span><strong>$${Number(order.total).toFixed(2)}</strong></div>${order.notes ? `<div class="rule"></div><div><strong>Notas:</strong><br>${escapeHtml(order.notes)}</div>` : ''}<div class="center muted" style="margin-top:14px">Gracias por su visita</div><div class="actions"><button onclick="window.print()">Imprimir</button><button onclick="window.close()">Cerrar</button></div></body></html>`);
-  receiptWindow.document.close();
-  receiptWindow.focus();
-  setTimeout(() => receiptWindow.print(), 250);
 }
 
 // Login

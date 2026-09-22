@@ -16,8 +16,30 @@ let selectedPizzaCategory = null;
 let selectedIceCreamCategory = null;
 let selectedPromo = null;
 let selectedQuantity = 1;
+let activeBcvRates = { tasa_usd: 852.41, tasa_eur: 978.17, moneda_activa: 'USD' };
 
 // Cargar datos desde la API del servidor
+async function fetchBcvInfo() {
+  try {
+    const res = await fetch('/api/tasas', { cache: 'no-store' });
+    const data = await res.json();
+    activeBcvRates = {
+      tasa_usd: Number(data.tasa_usd || 852.41),
+      tasa_eur: Number(data.tasa_eur || 978.17),
+      moneda_activa: String(data.moneda_activa || 'USD').toUpperCase()
+    };
+    const rateBanner = document.getElementById('client-bcv-rate');
+    const rateKey = activeBcvRates.moneda_activa === 'EUR' ? 'EUR' : 'USD';
+    const rateValue = activeBcvRates.moneda_activa === 'EUR' ? activeBcvRates.tasa_eur : activeBcvRates.tasa_usd;
+    if (rateBanner) {
+      rateBanner.textContent = `Tasa BCV: ${rateValue.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs/${rateKey}`;
+    }
+    window.__bcvRate = rateValue;
+  } catch (err) {
+    console.error('No se pudo cargar la tasa BCV:', err);
+  }
+}
+
 async function initApp() {
   try {
     const res = await fetch('/api/menu', { cache: 'no-store' });
@@ -34,6 +56,7 @@ async function initApp() {
       currentCategory = MENU_DATA[0].id;
     }
 
+    await fetchBcvInfo();
     renderCategories();
     renderProducts(currentCategory);
     setupGlobalEventListeners();
@@ -436,7 +459,8 @@ function openCartModal() {
   }
 
   const total = items.reduce((sum, i) => sum + (i.unitPrice * i.quantity), 0);
-  if (totalEl) totalEl.textContent = `$${total.toFixed(2)}`;
+  const rateValue = activeBcvRates.moneda_activa === 'EUR' ? activeBcvRates.tasa_eur : activeBcvRates.tasa_usd;
+  if (totalEl) totalEl.textContent = `${activeBcvRates.moneda_activa === 'EUR' ? '€' : '$'}${total.toFixed(2)} · Bs ${Number(total * rateValue).toFixed(2)}`;
 
   if (modal) {
     modal.classList.remove('hidden');
@@ -480,8 +504,10 @@ function sendWhatsAppOrder() {
   });
 
   const total = items.reduce((sum, i) => sum + (i.unitPrice * i.quantity), 0);
+  const rateValue = activeBcvRates.moneda_activa === 'EUR' ? activeBcvRates.tasa_eur : activeBcvRates.tasa_usd;
+  const currencySymbol = activeBcvRates.moneda_activa === 'EUR' ? '€' : '$';
   message += `\n📝 *Notas:* ${notes}\n`;
-  message += `💰 *TOTAL A PAGAR:* $${total.toFixed(2)}`;
+  message += `💰 *TOTAL A PAGAR:* ${currencySymbol}${total.toFixed(2)} (Bs ${Number(total * rateValue).toFixed(2)})`;
 
   const encodedUrl = `https://wa.me/${RESTAURANT_WHATSAPP}?text=${encodeURIComponent(message)}`;
   window.open(encodedUrl, '_blank');

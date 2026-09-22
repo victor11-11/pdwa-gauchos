@@ -5,6 +5,8 @@ import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { sendKitchenTicket } from './utils/printer.js';
+import { fetchBCVRates, loadRates, setActiveCurrency, startBCVUpdater } from './utils/bcv.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +19,8 @@ app.use(cors());
 app.use(express.json());
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+startBCVUpdater();
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -342,6 +346,34 @@ app.get('/api/menu', (req, res) => {
   }
 });
 
+app.get('/api/tasas', async (req, res) => {
+  try {
+    const rates = await loadRates();
+    res.json(rates);
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'No se pudo cargar la tasa BCV' });
+  }
+});
+
+app.post('/api/tasas/actualizar', async (req, res) => {
+  try {
+    const rates = await fetchBCVRates();
+    res.json({ ok: true, ...rates, message: 'Tasas BCV actualizadas' });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'No se pudo actualizar la tasa BCV' });
+  }
+});
+
+app.put('/api/tasas/moneda', async (req, res) => {
+  try {
+    const { moneda } = req.body || {};
+    const rates = await setActiveCurrency(moneda || 'USD');
+    res.json({ ok: true, ...rates, message: 'Moneda activa actualizada' });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'No se pudo actualizar la moneda activa' });
+  }
+});
+
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body;
   try {
@@ -436,6 +468,105 @@ app.get('/api/admin/pos/orders/:id', authenticateToken, (req, res) => {
   const order = getPosOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Cuenta no encontrada' });
   res.json(order);
+});
+
+function buildPosPrintPayload(order, req, type = 'kitchen') {
+  const normalizedType = String(type || 'kitchen').toLowerCase();
+  return {
+    ...order,
+    id: order.id,
+    customer_name: req.body.customer_name || `Mesa ${order.table_number}`,
+    customer_phone: req.body.customer_phone || '',
+    customer_address: req.body.customer_address || '',
+    gps_url: req.body.gps_url || '',
+    notes: order.notes || req.body.notes || '',
+    items: (Array.isArray(order.items) ? order.items : []).map(item => ({
+      ...item,
+      quantity: Number(item.quantity || 1),
+      unit_price: Number(item.unit_price || 0),
+      price: Number(item.unit_price || 0),
+      name: item.name || 'Producto',
+      description: item.description || ''
+    })),
+    subtotal: Number(order.subtotal || 0),
+    service: Number(order.service || 0),
+    tax: Number(order.tax || 0),
+    total: Number(order.total || 0),
+    printType: normalizedType
+  };
+}
+
+app.post('/api/pedidos/:id/imprimir', authenticateToken, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) return res.status(400).json({ error: 'ID de pedido inválido' });
+
+  try {
+    const order = getPosOrder(orderId);
+    if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+    const requestedType = String(req.body.tipo || req.body.type || 'kitchen').toLowerCase();
+    const printType = requestedType === 'cuenta' || requestedType === 'cliente' ? 'cliente' : 'kitchen';
+    const payload = buildPosPrintPayload(order, req, printType);
+    const result = await sendKitchenTicket(payload, { restaurantName: 'Gauchos', type: printType });
+
+    res.json({
+      success: true,
+      message: printType === 'cliente' ? 'Cuenta enviada a la impresora térmica.' : 'Comanda enviada a la impresora térmica.',
+      printer: result.printer,
+      orderId: order.id,
+      printType
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo imprimir la comanda' });
+  }
+});
+
+app.post('/api/pedidos/:id/imprimir-cuenta', authenticateToken, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) return res.status(400).json({ error: 'ID de pedido inválido' });
+
+  try {
+    const order = getPosOrder(orderId);
+    if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+    const payload = buildPosPrintPayload(order, req, 'cliente');
+    const result = await sendKitchenTicket(payload, { restaurantName: 'Gauchos', type: 'cliente' });
+
+    res.json({
+      success: true,
+      message: 'Cuenta enviada a la impresora térmica.',
+      printer: result.printer,
+      orderId: order.id,
+      printType: 'cliente'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo imprimir la cuenta' });
+  }
+});
+
+app.post('/api/admin/printer/test', authenticateToken, async (req, res) => {
+  try {
+    const sampleOrder = {
+      id: 'PRUEBA',
+      table_number: 1,
+      customer_name: 'Prueba de impresión',
+      notes: 'Ticket de verificación del sistema',
+      items: [
+        { name: 'Hamburguesa Gaucho', quantity: 1, unit_price: 8.5, description: 'Sin cebolla' },
+        { name: 'Refresco 1L', quantity: 2, unit_price: 2.5, description: 'Coca-Cola' }
+      ],
+      total: 13.5
+    };
+
+    const result = await sendKitchenTicket(sampleOrder, { restaurantName: 'Gauchos' });
+    res.json({
+      success: true,
+      message: 'Comanda de prueba enviada correctamente.',
+      printer: result.printer
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo enviar la prueba de impresión' });
+  }
 });
 
 app.patch('/api/admin/pos/orders/:id', authenticateToken, (req, res) => {

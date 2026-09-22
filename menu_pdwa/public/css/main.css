@@ -288,6 +288,46 @@ button { cursor: pointer; }
     font-size: 1rem;
   }
 }
+
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 2mm;
+  }
+
+  body.admin-body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .admin-sidebar,
+  .admin-header,
+  .admin-content > section:not(.thermal-print-receipt),
+  .dashboard-grid,
+  .pos-panel,
+  .pos-catalog,
+  .pos-cart,
+  .nav-item,
+  .primary-button,
+  .outline-button,
+  .ghost-button,
+  .pos-actions,
+  .admin-shell > *:not(.thermal-print-receipt) {
+    display: none !important;
+  }
+
+  .thermal-print-receipt {
+    display: block !important;
+    width: 72mm;
+    margin: 0 auto;
+    padding: 0;
+    font-family: 'Courier New', monospace !important;
+    font-size: 12px;
+    line-height: 1.35;
+    color: #111;
+  }
+}
+
 .admin-shell {
   display: flex;
   min-height: 100vh;
@@ -466,6 +506,20 @@ button { cursor: pointer; }
   color: var(--text);
   font-weight: 700;
 }
+.bcv-header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(252, 211, 77, 0.18);
+  border: 1px solid rgba(234, 179, 8, 0.38);
+  color: #111827;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
 .currency-divider { color: var(--muted); }
 .muted { color: var(--muted); }
 .status-pill-inline {
@@ -611,6 +665,13 @@ button { cursor: pointer; }
 .stat-trend.neutral {
   background: rgba(17,24,39,0.04);
   color: var(--muted);
+}
+.stat-card-bcv .stat-value,
+.stat-card-bcv .stat-meta {
+  color: #111827;
+}
+.stat-card-bcv .stat-meta {
+  opacity: 0.82;
 }
 .stat-value {
   font-size: clamp(2rem, 3vw, 2.5rem);
@@ -965,15 +1026,27 @@ button { cursor: pointer; }
   color: var(--muted);
 }
 .summary-row,
-.summary-total {
+.summary-total,
+.summary-bcv-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 .summary-row strong,
-.summary-total strong {
+.summary-total strong,
+.summary-bcv-row strong {
   color: var(--text);
+}
+.summary-bcv-row {
+  padding-top: 8px;
+  border-top: 1px dashed rgba(29,27,26,0.12);
+  color: var(--muted);
+  font-weight: 700;
+}
+.summary-bcv-row strong {
+  color: #111827;
+  font-size: 0.9rem;
 }
 .summary-total {
   margin-top: 6px;

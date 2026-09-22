@@ -129,6 +129,7 @@
           </div>
 
           <div class="admin-header-actions">
+            <span id="bcv-header-badge" class="bcv-header-badge">Tasa BCV: 0,00 Bs/$</span>
             <button id="currency-toggle" class="currency-pill" type="button" aria-label="Cambiar moneda">
               <span>USD</span>
               <span class="currency-divider">/</span>
@@ -167,6 +168,22 @@
               </div>
               <div id="daily-sales-total" class="stat-value">$0.00</div>
               <div id="daily-sales-meta" class="stat-meta">0 pedidos · 0 mesas atendidas</div>
+            </article>
+
+            <article class="stat-card stat-card-bcv">
+              <div class="stat-topline">
+                <span class="stat-label">Tasa BCV</span>
+                <span class="stat-trend neutral">USD / EUR</span>
+              </div>
+              <div id="bcv-rate-value" class="stat-value">USD 0.00</div>
+              <div id="bcv-rate-meta" class="stat-meta">Sin actualización</div>
+              <div class="bvc-actions">
+                <button id="bvc-refresh-btn" class="outline-button small" type="button">Forzar actualización</button>
+                <select id="bcv-currency-select" class="bvc-select">
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                </select>
+              </div>
             </article>
 
             <article class="stat-card">
@@ -292,9 +309,14 @@
                     <span>Total</span>
                     <strong id="pos-total">$0.00</strong>
                   </div>
+                  <div class="summary-bcv-row">
+                    <span>Total en Bs.</span>
+                    <strong id="pos-total-bs">0,00 Bs.</strong>
+                  </div>
 
                   <div class="pos-actions pos-actions-three">
                     <button id="send-command-btn" class="outline-button wide" type="button" disabled>Enviar comanda</button>
+                    <button id="print-kitchen-btn" class="outline-button wide" type="button" disabled>Imprimir comanda</button>
                     <button id="print-sale-btn" class="outline-button wide" type="button" disabled>Imprimir cuenta</button>
                     <button id="charge-sale-btn" class="primary-button wide" type="button" disabled>Cobrar y cerrar</button>
                   </div>
@@ -569,6 +591,7 @@
                 <div class="card-heading"><div><span class="icon-tile">⌁</span><div><h3>Sesión y seguridad</h3><p>Protege el acceso a tu operación.</p></div></div></div>
                 <div class="dashboard-form">
                   <p class="section-note">La sesión actual expira automáticamente después de 12 horas.</p>
+                  <button id="printer-test-btn" type="button" class="outline-button wide">Prueba de impresión</button>
                   <button id="logout-all-sessions" type="button" class="outline-button wide">Cerrar mi sesión</button>
                 </div>
               </section>
