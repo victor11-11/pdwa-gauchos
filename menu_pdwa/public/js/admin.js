@@ -31,6 +31,7 @@ const extraIncludedCheck = document.getElementById('extra-included');
 const extraAvailableCheck = document.getElementById('extra-available');
 const extrasList = document.getElementById('extras-list');
 const cancelExtraBtn = document.getElementById('cancel-extra-btn');
+const extraFilterType = document.getElementById('extra-filter-type');
 
 // Formulario de Categorías
 const categoryForm = document.getElementById('category-form');
@@ -336,7 +337,7 @@ function filterProducts() {
 
 if (productSearch) productSearch.addEventListener('input', filterProducts);
 
-async function loadExtras() {
+async function loadExtras(type = extraFilterType?.value || 'all') {
   try {
     const res = await fetch(`${API_URL}/admin/extras`, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -349,7 +350,8 @@ async function loadExtras() {
     }
 
     const extras = await readApiJson(res);
-    extrasList.innerHTML = extras.map(extra => `
+    const filteredExtras = type === 'all' ? extras : extras.filter(extra => extra.type === type);
+    extrasList.innerHTML = filteredExtras.map(extra => `
       <tr>
         <td><strong>${escapeHtml(extra.name)}</strong></td>
         <td>${extraTypeLabels[extra.type] || extra.type}</td>
@@ -365,6 +367,8 @@ async function loadExtras() {
     console.error('Error al cargar extras:', err);
   }
 }
+
+if (extraFilterType) extraFilterType.addEventListener('change', () => loadExtras(extraFilterType.value));
 
 if (extraForm) {
   extraForm.addEventListener('submit', async (e) => {
@@ -453,7 +457,13 @@ function updateExtraPriceState() {
   if (extraPriceInput.disabled) extraPriceInput.value = '0';
 }
 
-extraTypeSelect.addEventListener('change', updateExtraPriceState);
+extraTypeSelect.addEventListener('change', () => {
+  updateExtraPriceState();
+  if (extraFilterType) {
+    extraFilterType.value = extraTypeSelect.value;
+    loadExtras(extraTypeSelect.value);
+  }
+});
 extraIncludedCheck.addEventListener('change', updateExtraPriceState);
 updateExtraPriceState();
 
