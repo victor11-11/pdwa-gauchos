@@ -61,6 +61,10 @@ const posTitle = document.getElementById('pos-title');
 const posTableBadge = document.getElementById('pos-table-badge');
 const posProductSelect = document.getElementById('pos-product-select');
 const posAddProduct = document.getElementById('pos-add-product');
+const posCategoryNav = document.getElementById('pos-category-nav');
+const posProductGrid = document.getElementById('pos-product-grid');
+const posCartCount = document.getElementById('pos-cart-count');
+const backToTablesButton = document.getElementById('back-to-tables-btn');
 const posItems = document.getElementById('pos-items');
 const posNotes = document.getElementById('pos-notes');
 const posSubtotal = document.getElementById('pos-subtotal');
@@ -69,6 +73,8 @@ const sendCommandButton = document.getElementById('send-command-btn');
 const printSaleButton = document.getElementById('print-sale-btn');
 let posTables = [];
 let posProducts = [];
+let posCategories = [];
+let activePosCategory = '';
 let activePosOrder = null;
 
 // Inicialización
@@ -157,7 +163,10 @@ function activateView(view) {
     navItem.classList.toggle('active', navItem.dataset.view === view);
   });
   const dashboardGrid = document.querySelector('.dashboard-grid');
-  if (dashboardGrid) dashboardGrid.classList.toggle('admin-view-hidden', !['pos', 'reports'].includes(view));
+  if (dashboardGrid) {
+    dashboardGrid.classList.toggle('admin-view-hidden', !['pos', 'reports'].includes(view));
+    dashboardGrid.classList.toggle('pos-active', view === 'pos');
+  }
 }
 
 document.querySelectorAll('.nav-item[data-view]').forEach(item => {
@@ -172,13 +181,27 @@ async function loadPosCatalog() {
   try {
     const res = await fetch('/api/menu', { cache: 'no-store' });
     const data = await res.json();
-    posProducts = (data.menu || []).flatMap(category => (category.products || []).map(product => ({ ...product, categoryName: category.name })));
+    posCategories = (data.menu || []).filter(category => (category.products || []).length).map(category => ({ id: category.id, name: category.name }));
+    posProducts = (data.menu || []).flatMap(category => (category.products || []).map(product => ({ ...product, categoryId: category.id, categoryName: category.name })));
+    activePosCategory = activePosCategory || posCategories[0]?.id || '';
+    renderPosCatalog();
     if (posProductSelect) {
       posProductSelect.innerHTML = '<option value="">Selecciona un producto</option>' + posProducts.map(product => `<option value="${product.id}">${product.name} · $${Number(product.price).toFixed(2)}</option>`).join('');
     }
   } catch (err) {
     showNotice('No se pudo cargar el catálogo del POS.', 'error');
   }
+}
+
+function renderPosCatalog() {
+  if (!posCategoryNav || !posProductGrid) return;
+  posCategoryNav.innerHTML = posCategories.map(category => `<button class="pos-category-button ${category.id === activePosCategory ? 'is-active' : ''}" data-pos-category="${category.id}" type="button" role="tab" aria-selected="${category.id === activePosCategory}">${escapeHtml(category.name)}</button>`).join('');
+  const products = posProducts.filter(product => product.categoryId === activePosCategory);
+  posProductGrid.innerHTML = products.length ? products.map(product => `<button class="pos-product-card ${activePosOrder ? '' : 'is-disabled'}" data-pos-product-id="${product.id}" type="button" ${activePosOrder ? '' : 'disabled'}><span class="pos-product-visual" aria-hidden="true">${getProductIcon(product.categoryId)}</span><span class="pos-product-info"><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.description || product.categoryName)}</small><b>$${Number(product.price).toFixed(2)}</b></span></button>`).join('') : '<p class="pos-empty">No hay productos disponibles en esta categoría.</p>';
+}
+
+function getProductIcon(categoryId) {
+  return { hamburguesas: '🍔', granjeros: '🍗', entradas: '🍟', ensaladas: '🥗', bebidas: '🥤', promos: '🏷️' }[categoryId] || '🍽️';
 }
 
 async function loadPosTables() {
@@ -210,7 +233,9 @@ async function openPosTable(tableNumber) {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ tableNumber })
     });
-    activePosOrder = await readApiJson(res);
+    const order = await readApiJson(res);
+    if (!res.ok) throw new Error(order.error || 'No se pudo abrir la mesa');
+    activePosOrder = order;
     renderPosOrder();
     activateView('pos');
     document.getElementById('pos-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -228,6 +253,10 @@ function renderPosOrder() {
   if (posNotes) posNotes.value = activePosOrder?.notes || '';
   if (posProductSelect) posProductSelect.disabled = !hasOrder;
   if (posAddProduct) posAddProduct.disabled = !hasOrder;
+  if (posCartCount) {
+    const itemCount = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    posCartCount.textContent = `${itemCount} producto${itemCount === 1 ? '' : 's'}`;
+  }
   if (sendCommandButton) sendCommandButton.disabled = !hasOrder || !items.length;
   if (printSaleButton) printSaleButton.disabled = !hasOrder;
   if (chargeSaleButton) chargeSaleButton.disabled = !hasOrder || !items.length;
@@ -235,6 +264,7 @@ function renderPosOrder() {
   const subtotal = Number(activePosOrder?.subtotal || 0);
   if (posSubtotal) posSubtotal.textContent = `$${subtotal.toFixed(2)}`;
   if (posTotal) posTotal.textContent = `$${Number(activePosOrder?.total || 0).toFixed(2)}`;
+  renderPosCatalog();
 }
 
 async function savePosOrder(status = 'open', paymentMethod = '') {
@@ -244,13 +274,26 @@ async function savePosOrder(status = 'open', paymentMethod = '') {
     method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({ items, notes: posNotes?.value || '', status, paymentMethod })
   });
-  activePosOrder = await readApiJson(res);
+  const order = await readApiJson(res);
+  if (!res.ok) throw new Error(order.error || 'No se pudo actualizar la cuenta');
+  activePosOrder = order;
   renderPosOrder();
   await loadPosTables();
   return activePosOrder;
 }
 
 document.addEventListener('click', async event => {
+  const categoryButton = event.target.closest('[data-pos-category]');
+  if (categoryButton) {
+    activePosCategory = categoryButton.dataset.posCategory;
+    renderPosCatalog();
+    return;
+  }
+  const productCard = event.target.closest('[data-pos-product-id]');
+  if (productCard && activePosOrder) {
+    await addProductToOrder(productCard.dataset.posProductId);
+    return;
+  }
   const tableButton = event.target.closest('.table-action');
   if (tableButton) await openPosTable(Number(tableButton.dataset.tableNumber));
   const removeButton = event.target.closest('.pos-remove-item');
@@ -269,6 +312,19 @@ document.addEventListener('click', async event => {
   }
 });
 
+async function addProductToOrder(productId) {
+  const product = posProducts.find(item => item.id === productId);
+  if (!product || !activePosOrder) return;
+  const existing = activePosOrder.items.find(item => item.product_id === product.id);
+  if (existing) existing.quantity += 1;
+  else activePosOrder.items.push({ product_id: product.id, name: product.name, unit_price: product.price, quantity: 1, description: '' });
+  try {
+    await savePosOrder();
+  } catch (err) {
+    showNotice(err.message, 'error');
+  }
+}
+
 document.addEventListener('change', async event => {
   const descriptionInput = event.target.closest('.pos-item-description');
   if (!descriptionInput || !activePosOrder) return;
@@ -279,14 +335,13 @@ document.addEventListener('change', async event => {
   }
 });
 
-if (posAddProduct) posAddProduct.addEventListener('click', async () => {
-  const product = posProducts.find(item => item.id === posProductSelect.value);
-  if (!product || !activePosOrder) return;
-  const existing = activePosOrder.items.find(item => item.product_id === product.id);
-  if (existing) existing.quantity += 1;
-  else activePosOrder.items.push({ product_id: product.id, name: product.name, unit_price: product.price, quantity: 1, description: '' });
-  posProductSelect.value = '';
-  await savePosOrder();
+if (posAddProduct) posAddProduct.addEventListener('click', () => addProductToOrder(posProductSelect.value));
+
+if (backToTablesButton) backToTablesButton.addEventListener('click', () => {
+  activePosOrder = null;
+  renderPosOrder();
+  activateView('tables');
+  document.getElementById('tables-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
 if (sendCommandButton) sendCommandButton.addEventListener('click', async () => {
@@ -550,7 +605,7 @@ if (extraForm) {
 async function readApiJson(res) {
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
-    throw new Error(`El servidor respondió HTTP ${res.status} en lugar de JSON. Reinicia npm start y recarga el panel.`);
+    throw new Error(`El servidor respondió HTTP ${res.status} en lugar de JSON. Ejecuta npm start y recarga el panel.`);
   }
   return res.json();
 }

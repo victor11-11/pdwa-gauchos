@@ -253,35 +253,52 @@
                   <p class="eyebrow compact">Punto de venta</p>
                   <h2 id="pos-title">Selecciona una mesa</h2>
                 </div>
-                <span id="pos-table-badge" class="pos-badge">Sin mesa</span>
-              </div>
-
-              <div class="pos-add-item">
-                <label for="pos-product-select">Agregar producto</label>
-                <div class="pos-add-row">
-                  <select id="pos-product-select" disabled><option>Selecciona una mesa primero</option></select>
-                  <button id="pos-add-product" class="primary-button" type="button" disabled>Agregar</button>
+                <div class="pos-header-actions">
+                  <button id="back-to-tables-btn" class="outline-button" type="button">Volver a mesas</button>
+                  <span id="pos-table-badge" class="pos-badge">Sin mesa</span>
                 </div>
               </div>
 
-              <div id="pos-items" class="pos-items"><p class="pos-empty">Abre una mesa para comenzar la cuenta.</p></div>
-              <label class="pos-notes-label" for="pos-notes">Notas de la comanda / cuenta<textarea id="pos-notes" rows="2" placeholder="Ej. pedido para llevar, cliente de la mesa..."></textarea></label>
+              <div class="pos-workspace">
+                <section class="pos-catalog" aria-label="Catálogo de productos">
+                  <div class="pos-catalog-toolbar">
+                    <div>
+                      <p class="eyebrow compact">Catálogo</p>
+                      <h3>Selecciona productos</h3>
+                    </div>
+                    <div id="pos-category-nav" class="pos-category-nav" role="tablist" aria-label="Categorías de productos"></div>
+                  </div>
+                  <div id="pos-product-grid" class="pos-product-grid"></div>
+                </section>
 
-              <div class="pos-summary">
-                <div class="summary-row"><span>Subtotal</span><strong id="pos-subtotal">$0.00</strong></div>
-                <div class="summary-row"><span>Servicio</span><strong>$0.00</strong></div>
-                <div class="summary-row"><span>Impuestos</span><strong>$0.00</strong></div>
-              </div>
+                <section class="pos-cart" aria-label="Cuenta de la mesa">
+                  <div class="pos-cart-heading">
+                    <div>
+                      <p class="eyebrow compact">Cuenta activa</p>
+                      <h3>Pedido de la mesa</h3>
+                    </div>
+                    <span id="pos-cart-count" class="pos-cart-count">0 productos</span>
+                  </div>
+                  <div id="pos-items" class="pos-items"><p class="pos-empty">Abre una mesa para comenzar la cuenta.</p></div>
+                  <label class="pos-notes-label" for="pos-notes">Notas de la comanda / cuenta<textarea id="pos-notes" rows="2" placeholder="Ej. pedido para llevar, cliente de la mesa..."></textarea></label>
 
-              <div class="summary-total">
-                <span>Total</span>
-                <strong id="pos-total">$0.00</strong>
-              </div>
+                  <div class="pos-summary">
+                    <div class="summary-row"><span>Subtotal</span><strong id="pos-subtotal">$0.00</strong></div>
+                    <div class="summary-row"><span>Servicio</span><strong>$0.00</strong></div>
+                    <div class="summary-row"><span>Impuestos</span><strong>$0.00</strong></div>
+                  </div>
 
-              <div class="pos-actions pos-actions-three">
-                <button id="send-command-btn" class="outline-button wide" type="button" disabled>Enviar comanda</button>
-                <button id="print-sale-btn" class="outline-button wide" type="button" disabled>Imprimir cuenta</button>
-                <button id="charge-sale-btn" class="primary-button wide" type="button" disabled>Cobrar y cerrar</button>
+                  <div class="summary-total">
+                    <span>Total</span>
+                    <strong id="pos-total">$0.00</strong>
+                  </div>
+
+                  <div class="pos-actions pos-actions-three">
+                    <button id="send-command-btn" class="outline-button wide" type="button" disabled>Enviar comanda</button>
+                    <button id="print-sale-btn" class="outline-button wide" type="button" disabled>Imprimir cuenta</button>
+                    <button id="charge-sale-btn" class="primary-button wide" type="button" disabled>Cobrar y cerrar</button>
+                  </div>
+                </section>
               </div>
             </aside>
           </section>
