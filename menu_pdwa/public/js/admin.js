@@ -662,12 +662,21 @@ const ESTADO_COLA = {
 const renderPrinters = () => {
   const data = printersState.data;
   if (!data) return;
+  const agente = data.agente || {};
+  const impresorasDelEquipo = agente.conectado ? (agente.impresoras || []) : (data.impresoras || []);
+  const rolesMostrados = agente.conectado
+    ? (agente.logicas || []).map(role => ({
+      ...role,
+      colaActual: role.destino || null,
+      estadoVinculada: impresorasDelEquipo.find(printer => printer.cola === role.destino)?.estado || null
+    }))
+    : (data.logicas || []);
 
   // --- avisos (duplicadas, sin impresoras, etc.) ---
   const avisos = [];
   for (const dup of data.duplicadas || []) avisos.push(dup.aviso);
-  for (const logica of data.logicas || []) {
-    if (!logica.destino) avisos.push(`No hay impresora para "${logica.label}". Conecta una y asígnala aquí.`);
+  for (const logica of rolesMostrados) {
+    if (!logica.destino && !logica.colaActual) avisos.push(`No hay impresora para "${logica.label}". Conecta una y asígnala aquí.`);
   }
   const alertBox = printersEl('printers-avisos');
   if (avisos.length && alertBox) {
@@ -679,8 +688,7 @@ const renderPrinters = () => {
 
   // --- resumen ---
   const status = printersEl('printers-status');
-  const conectadas = (data.impresoras || []).filter(p => p.estado === 'connected');
-  const agente = data.agente || {};
+  const conectadas = impresorasDelEquipo.filter(p => p.estado === 'connected');
   if (status) {
     if (agente.conectado) {
       status.textContent = data.notaImpresion || 'Las comandas se envían a la ticketera del agente.';
@@ -719,14 +727,14 @@ const renderPrinters = () => {
   // --- roles ---
   const grid = printersEl('printers-logicas');
   if (grid) {
-    const bindings = data.logicas || [];
+    const bindings = rolesMostrados;
     if (!bindings.length) {
       grid.innerHTML = '<p class="section-note">No hay impresoras lógicas configuradas.</p>';
     } else {
       grid.innerHTML = bindings.map(p => {
-        const colaVinculada = (data.impresoras || []).find(c => c.cola === p.colaActual);
+        const colaVinculada = impresorasDelEquipo.find(c => c.cola === p.colaActual);
         const estado = ESTADO_COLA[p.estadoVinculada] || (p.colaActual ? { texto: 'Conectada', clase: 'ok' } : { texto: 'Sin asignar', clase: 'warn' });
-        const opciones = (data.impresoras || [])
+        const opciones = impresorasDelEquipo
           .filter(c => c.estado === 'connected')
           .map(c => `<option value="${escapeHtml(c.cola)}" ${c.cola === p.colaActual ? 'selected' : ''}>${escapeHtml(c.modelo || c.cola)} (${escapeHtml(c.cola)})</option>`)
           .join('');
@@ -743,11 +751,11 @@ const renderPrinters = () => {
             ${p.origen === 'auto' && p.colaActual ? '<div class="printer-role-hint">Elegida automáticamente</div>' : ''}
             ${p.motivo ? `<div class="printer-role-hint">${escapeHtml(p.motivo)}</div>` : ''}
             <div class="printer-role-actions">
-              <select class="printer-select" ${opciones ? '' : 'disabled'} data-role="${escapeHtml(p.id)}">
+              <select class="printer-select" ${opciones && !agente.conectado ? '' : 'disabled'} data-role="${escapeHtml(p.id)}">
                 ${opciones ? opciones : '<option value="">Ninguna conectada</option>'}
               </select>
               <button type="button" class="ghost-button" data-printer-action="test" data-role="${escapeHtml(p.id)}" ${p.colaActual ? '' : 'disabled'}>Probar</button>
-              <button type="button" class="ghost-button" data-printer-action="toggle" data-role="${escapeHtml(p.id)}">${p.enabled ? 'Apagar' : 'Encender'}</button>
+              <button type="button" class="ghost-button" data-printer-action="toggle" data-role="${escapeHtml(p.id)}" ${agente.conectado ? 'disabled title="Cambia esta opción en el equipo del agente"' : ''}>${p.enabled ? 'Apagar' : 'Encender'}</button>
             </div>
           </div>`;
       }).join('');
@@ -1017,6 +1025,9 @@ if (bcvCurrencySelect) {
 }
 
 loadBcvRates();
+setInterval(() => {
+  if (document.visibilityState === 'visible') loadBcvRates();
+}, 60000);
 
 if (chargeSaleButton) chargeSaleButton.addEventListener('click', async () => {
   if (!activePosOrder) return;
@@ -1267,7 +1278,9 @@ async function fetchJsonWithWarmup(url, options = {}, attempts = 2) {
     const res = await fetch(url, { cache: 'no-store', ...options });
     const contentType = res.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
-      return readApiJson(res);
+      const data = await readApiJson(res);
+      if (!res.ok) throw new Error(data.error || `El servidor respondió HTTP ${res.status}.`);
+      return data;
     }
     lastError = new Error(`El servidor respondió HTTP ${res.status} en lugar de JSON. Espera unos segundos y reintenta.`);
     if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, 2500));

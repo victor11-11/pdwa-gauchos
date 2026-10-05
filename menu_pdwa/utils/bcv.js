@@ -11,7 +11,7 @@ export { formatBcvRate, normalizarTasa };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const tasasPath = path.join(__dirname, '..', 'tasas.json');
+const tasasPath = path.resolve(process.env.RATE_FILE_PATH || path.join(__dirname, '..', 'tasas.json'));
 
 const BCV_URL = 'https://www.bcv.org.ve/';
 const HTTP_TIMEOUT_MS = 20000;
@@ -28,7 +28,9 @@ const defaultRates = {
   tasa_usd_texto: '852,41',
   tasa_eur_texto: '978,17',
   moneda_activa: 'USD',
-  ultima_actualizacion: new Date().toISOString()
+  // Un valor de respaldo no debe parecer recién actualizado: así Render
+  // consulta al BCV incluso si acaba de crear el archivo en un disco vacío.
+  ultima_actualizacion: new Date(0).toISOString()
 };
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -42,6 +44,7 @@ async function ensureRatesFile() {
   try {
     await fs.access(tasasPath);
   } catch {
+    await fs.mkdir(path.dirname(tasasPath), { recursive: true });
     await fs.writeFile(tasasPath, JSON.stringify(defaultRates, null, 2), 'utf8');
   }
 }
@@ -62,7 +65,7 @@ export async function loadRates() {
       tasa_usd_texto: parsed.tasa_usd_texto || formatBcvRate(tasa_usd),
       tasa_eur_texto: parsed.tasa_eur_texto || formatBcvRate(tasa_eur),
       moneda_activa: String(parsed.moneda_activa || 'USD').toUpperCase(),
-      ultima_actualizacion: parsed.ultima_actualizacion || new Date().toISOString()
+      ultima_actualizacion: parsed.ultima_actualizacion || defaultRates.ultima_actualizacion
     };
   } catch {
     await fs.writeFile(tasasPath, JSON.stringify(defaultRates, null, 2), 'utf8');
@@ -72,22 +75,26 @@ export async function loadRates() {
 
 export async function saveRates(nextRates) {
   await ensureRatesFile();
-  const tasa_usd = Number(nextRates.tasa_usd ?? defaultRates.tasa_usd);
-  const tasa_eur = Number(nextRates.tasa_eur ?? defaultRates.tasa_eur);
-  const merged = {
-    ...defaultRates,
-    ...(await loadRates()),
-    ...nextRates,
-    tasa_usd,
-    tasa_eur,
-    tasa_usd_texto: nextRates.tasa_usd_texto || formatBcvRate(tasa_usd),
-    tasa_eur_texto: nextRates.tasa_eur_texto || formatBcvRate(tasa_eur),
-    moneda_activa: String(nextRates.moneda_activa || 'USD').toUpperCase(),
-    ultima_actualizacion: nextRates.ultima_actualizacion || new Date().toISOString()
-  };
-  writeQueue = writeQueue.then(() => fs.writeFile(tasasPath, JSON.stringify(merged, null, 2), 'utf8'));
-  await writeQueue;
-  return merged;
+  const write = writeQueue.catch(() => {}).then(async () => {
+    const current = await loadRates();
+    const tasa_usd = Number(nextRates.tasa_usd ?? current.tasa_usd ?? defaultRates.tasa_usd);
+    const tasa_eur = Number(nextRates.tasa_eur ?? current.tasa_eur ?? defaultRates.tasa_eur);
+    const merged = {
+      ...defaultRates,
+      ...current,
+      ...nextRates,
+      tasa_usd,
+      tasa_eur,
+      tasa_usd_texto: nextRates.tasa_usd_texto || (nextRates.tasa_usd != null ? formatBcvRate(tasa_usd) : current.tasa_usd_texto),
+      tasa_eur_texto: nextRates.tasa_eur_texto || (nextRates.tasa_eur != null ? formatBcvRate(tasa_eur) : current.tasa_eur_texto),
+      moneda_activa: String(nextRates.moneda_activa || current.moneda_activa || 'USD').toUpperCase(),
+      ultima_actualizacion: nextRates.ultima_actualizacion || current.ultima_actualizacion || new Date().toISOString()
+    };
+    await fs.writeFile(tasasPath, JSON.stringify(merged, null, 2), 'utf8');
+    return merged;
+  });
+  writeQueue = write.then(() => undefined, () => undefined);
+  return write;
 }
 
 function parseMoneyNumber(rawValue) {
@@ -186,7 +193,6 @@ export async function fetchBCVRates() {
     tasa_eur: eur.value,
     tasa_usd_texto: usd.texto,
     tasa_eur_texto: eur.texto,
-    moneda_activa: 'USD',
     ultima_actualizacion: new Date().toISOString()
   });
 }

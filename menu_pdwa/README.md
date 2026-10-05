@@ -35,6 +35,12 @@ administración en `/admin`.
 En Render (o cualquier hosting) lo mismo, pero con `PORT` definida: el servidor
 ya la lee.
 
+En Render, la instancia puede reiniciarse y su sistema de archivos normal es
+temporal. Para conservar la tasa entre despliegues, crea un Persistent Disk
+montado en `/var/data` y define `RATE_FILE_PATH=/var/data/tasas.json` en las
+variables de entorno. Sin disco persistente, el servidor vuelve a descargar la
+tasa al arrancar, pero el archivo no conserva cambios entre reinicios.
+
 ---
 
 ## Impresoras
@@ -107,6 +113,11 @@ npm install -g pm2
 pm2 start impresor_local.js --name impresor --env SOCKET_URL=https://tu-servidor.onrender.com
 pm2 save
 ```
+
+En Render define `AGENT_TOKEN` como una variable de entorno estable y configura
+el mismo valor en el equipo local que ejecuta el agente. No dependas del token
+generado automáticamente: el archivo local de Render puede desaparecer al
+reiniciar o desplegar, y entonces el agente deja de autenticarse.
 
 ### Permiso para crear impresoras
 
@@ -192,6 +203,7 @@ El panel tiene además **Prueba de impresión** y **Limpiar trabajos atascados**
 | `BUSINESS_NAME` | Nombre que sale impreso en los tickets | `Gauchos` |
 | `PRINTER_NAME` | Fuerza una impresora (solo si hay una) | autodetección |
 | `AGENT_TOKEN` | Secreto entre servidor y agente | se genera solo |
+| `RATE_FILE_PATH` | Ruta del archivo de tasas; usar una ruta dentro del Persistent Disk en Render | `tasas.json` del proyecto |
 | `SOCKET_URL` | Dirección del servidor, para el agente | Render |
 | `PRINTER_LOG_TAG` | Cómo se llama el agente en los logs | `POS` |
 

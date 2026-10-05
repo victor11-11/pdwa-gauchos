@@ -125,11 +125,17 @@ const reportInventory = async () => {
   }
 };
 
-socket.on('connect', async () => {
+socket.on('connect', () => {
   log('Conectado al servidor. Listo para recibir impresiones.');
   log(`URL: ${socketUrl}`);
-  await reportInventory();
 });
+
+// El servidor lo solicita al abrir/actualizar el panel. También refrescamos
+// periódicamente para detectar impresoras conectadas después del arranque.
+socket.on('inventario_solicitado', reportInventory);
+setInterval(() => {
+  if (socket.connected) reportInventory();
+}, 30000).unref();
 
 socket.on('connect_error', (error) => {
   const motivo = String(error?.message || error || '');

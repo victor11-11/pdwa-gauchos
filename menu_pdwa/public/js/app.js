@@ -22,6 +22,7 @@ let activeBcvRates = { tasa_usd: 852.41, tasa_eur: 978.17, moneda_activa: 'USD' 
 async function fetchBcvInfo() {
   try {
     const res = await fetch('/api/tasas', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`El servidor respondió HTTP ${res.status} al cargar la tasa.`);
     const data = await res.json();
     activeBcvRates = {
       tasa_usd: Number(data.tasa_usd || 852.41),
@@ -46,7 +47,12 @@ async function fetchBcvInfo() {
 
 async function initApp() {
   try {
-    const res = await fetch('/api/menu', { cache: 'no-store' });
+    // Menú y tasa son independientes: cargarlos en paralelo reduce el tiempo
+    // hasta que aparece el catálogo, especialmente tras un cold start de Render.
+    const [res] = await Promise.all([
+      fetch('/api/menu', { cache: 'no-store' }),
+      fetchBcvInfo()
+    ]);
     const data = await res.json();
     
     MENU_DATA = data.menu; 
@@ -60,7 +66,6 @@ async function initApp() {
       currentCategory = MENU_DATA[0].id;
     }
 
-    await fetchBcvInfo();
     renderCategories();
     renderProducts(currentCategory);
     setupGlobalEventListeners();
@@ -69,6 +74,13 @@ async function initApp() {
     console.error('Error al cargar el menú desde la API:', err);
   }
 }
+
+// En el primer acceso tras una instancia dormida, la API puede responder con
+// la última tasa mientras refresca BCV en segundo plano. Vuelve a leerla para
+// que el cliente vea el valor nuevo sin recargar la página.
+setInterval(() => {
+  if (document.visibilityState === 'visible') fetchBcvInfo();
+}, 60000);
 
 // 1. RENDERIZAR CATEGORÍAS
 function renderCategories() {

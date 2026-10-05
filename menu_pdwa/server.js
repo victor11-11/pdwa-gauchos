@@ -65,9 +65,13 @@ const io = new Server(server, {
 const emitRemoteTicket = async ({ tipo, datosEscPos, role, orderId, wait = false }) => {
   if (!datosEscPos) return { submitted: false, printed: false, reason: 'No se generó el ticket' };
 
-  const agenteId = [...agenteInventario.keys()][0] || null;
-  const connected = io.sockets.sockets.size;
-  if (!connected) {
+  // En Render el agente local (el equipo con la impresora) es el único
+  // destino. No emitir a todos: con más de un agente se duplicaría el ticket.
+  const agenteId = [...agenteInventario.keys()].find(id => io.sockets.sockets.has(id))
+    || [...io.sockets.sockets.keys()][0]
+    || null;
+  const agenteSocket = agenteId ? io.sockets.sockets.get(agenteId) : null;
+  if (!agenteSocket) {
     return {
       submitted: false,
       printed: null,
@@ -83,7 +87,7 @@ const emitRemoteTicket = async ({ tipo, datosEscPos, role, orderId, wait = false
     ticket: datosEscPos
   });
 
-  io.emit('imprimir_ticket', {
+  agenteSocket.emit('imprimir_ticket', {
     tipo,
     datosEscPos,
     role: role || (tipo === 'cliente' ? 'counter' : 'kitchen'),
@@ -995,6 +999,19 @@ app.get('/api/admin/printers', authenticateToken, async (req, res) => {
       });
     }
 
+    const agenteRemoto = [...agenteInventario.values()][0] || null;
+    const logicasMostradas = agenteRemoto?.logicas?.length
+      ? agenteRemoto.logicas.map(printer => {
+        const cola = agenteRemoto.impresoras?.find(item => item.cola === printer.destino);
+        return {
+          ...printer,
+          colaActual: printer.destino || null,
+          estadoVinculada: cola?.estado || null,
+          motivo: printer.motivo || null
+        };
+      })
+      : logicas;
+
     res.json({
       plataforma: inventory.platform,
       cupsDisponible: inventory.cupsAvailable,
@@ -1041,25 +1058,25 @@ app.get('/api/admin/printers', authenticateToken, async (req, res) => {
         aviso: d.aviso
       })),
       avisos: inventory.warnings || [],
-      logicas,
+      logicas: logicasMostradas,
       resumenTrabajos: jobsSummary,
       // Si la impresora vive en otro equipo, el servidor no la ve: la info llega
       // desde el agente de ese equipo y se muestra aparte para no mezclarla con
       // las colas locales, que no son las mismas.
-      agente: agenteInventario.size
+      agente: agenteRemoto
         ? {
           conectado: true,
-          nombre: [...agenteInventario.values()][0]?.agente || null,
-          plataforma: [...agenteInventario.values()][0]?.plataforma || null,
-          impresoras: [...agenteInventario.values()][0]?.impresoras || [],
-          logicas: [...agenteInventario.values()][0]?.logicas || [],
-          actualizado: [...agenteInventario.values()][0]?.recibidoEn || null
+          nombre: agenteRemoto.agente || null,
+          plataforma: agenteRemoto.plataforma || null,
+          impresoras: agenteRemoto.impresoras || [],
+          logicas: agenteRemoto.logicas || [],
+          actualizado: agenteRemoto.recibidoEn || null
         }
         : { conectado: false, impresoras: [], logicas: [] },
       // Dónde se imprime de verdad. Es la pregunta que un dueño se hace al ver
       // una lista de impresoras, así que se responde explícitamente.
-      notaImpresion: agenteInventario.size
-        ? `Las comandas se envían a la ticketera del agente «${[...agenteInventario.values()][0]?.agente}». Las colas de este equipo son de referencia: quien imprime está allí.`
+      notaImpresion: agenteRemoto
+        ? `Las comandas se envían a la ticketera del agente «${agenteRemoto.agente}». Las colas de este equipo son de referencia: quien imprime está allí.`
         : 'Este equipo imprime directamente. Las colas de abajo son las suyas.'
     });
   } catch (error) {
@@ -1541,6 +1558,10 @@ app.delete('/api/admin/products/:id', authenticateToken, (req, res) => {
 server.listen(process.env.PORT || 3000, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${process.env.PORT || 3000}`);
   console.log('🔌 Socket.IO habilitado para impresiones remotas.');
+
+  if (process.env.RENDER && AGENT_TOKEN_ORIGEN !== 'entorno') {
+    console.warn('⚠ Render está usando un token de agente que puede cambiar al reiniciar. Define AGENT_TOKEN en Render y usa el mismo valor en el equipo de impresión.');
+  }
 
   // El secreto se imprime para que el dueño del restaurante pueda autorizar a su
   // agente. Si viene del entorno no se imprime: ya está puesto a propósito y no
