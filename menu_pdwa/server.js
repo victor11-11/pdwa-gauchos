@@ -32,7 +32,7 @@ import {
 const createJob = createPrintJob;
 const patchJob = patchPrintJob;
 import { getRateStatus, loadRates, refreshIfStale, refreshRates, setActiveCurrency, startBCVUpdater } from './utils/bcv.js';
-import { resolveAgentToken, mismoSecreto } from './utils/agente-token.js';
+import { resolveAgentToken, mismoSecreto, agentAuthRequired } from './utils/agente-token.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,7 +44,10 @@ const server = http.createServer(app);
 
 // Secreto del socket de impresión. Ver utils/agente-token.js: por este canal
 // salen las comandas con datos de clientes, así que no puede estar abierto.
-const { token: AGENT_TOKEN, origen: AGENT_TOKEN_ORIGEN } = resolveAgentToken();
+const AGENT_AUTH_REQUIRED = agentAuthRequired();
+const { token: AGENT_TOKEN, origen: AGENT_TOKEN_ORIGEN } = AGENT_AUTH_REQUIRED
+  ? resolveAgentToken()
+  : { token: null, origen: 'desactivado' };
 
 const io = new Server(server, {
   cors: {
@@ -155,6 +158,7 @@ const PRINT_JOB_TIMEOUT_MS = 45000;
 // conocer la dirección para leer las comandas (que llevan el nombre del cliente)
 // y mandar a imprimir lo que se quiera en la ticketera del restaurante.
 io.use((socket, next) => {
+  if (!AGENT_AUTH_REQUIRED) return next();
   const recibido = socket.handshake?.auth?.token || socket.handshake?.query?.token;
   if (!mismoSecreto(recibido, AGENT_TOKEN)) {
     console.warn(`⛔ Socket rechazado${socket.handshake?.address ? ` desde ${socket.handshake.address}` : ''}: secreto inválido`);
@@ -169,12 +173,7 @@ io.on('connection', (socket) => {
   socket.emit('inventario_solicitado', { solicitadoPor: socket.id });
 
   socket.on('inventario_impresoras', (payload) => {
-    agenteInventario.set(socket.id, {
-      ...payload,
-      socketId: socket.id,
-      recibidoEn: new Date().toISOString()
-    });
-    console.log(`📋 Agente ${payload?.agente || socket.id} reportó ${payload?.impresoras?.length ?? 0} impresora(s)`);
+    saveAgentInventory(socket, payload);
   });
 
   socket.on('job_estado', (payload) => {
@@ -201,6 +200,30 @@ io.on('connection', (socket) => {
       });
     }
     console.log('🔌 Agente de impresión desconectado:', socket.id);
+  });
+});
+
+const saveAgentInventory = (socket, payload) => {
+  if (!payload || typeof payload !== 'object') return null;
+  const report = {
+    ...payload,
+    socketId: socket.id,
+    recibidoEn: new Date().toISOString()
+  };
+  agenteInventario.set(socket.id, report);
+  console.log(`📋 Agente ${payload.agente || socket.id} reportó ${payload.impresoras?.length ?? 0} impresora(s)`);
+  return report;
+};
+
+// Pide al agente local que vuelva a consultar CUPS/USB y espera el resultado
+// para que el botón Detectar muestre el inventario recién leído.
+const refreshAgentInventory = (socketId) => new Promise((resolve) => {
+  const socket = io.sockets.sockets.get(socketId);
+  if (!socket) return resolve(null);
+
+  socket.timeout(15000).emit('inventario_solicitado', { solicitadoPor: 'panel-admin' }, (error, payload) => {
+    if (error || !payload) return resolve(null);
+    resolve(saveAgentInventory(socket, payload));
   });
 });
 
@@ -970,13 +993,22 @@ const buildPrintSample = async () => {
 
 app.get('/api/admin/printers', authenticateToken, async (req, res) => {
   try {
+    const agenteId = [...agenteInventario.keys()].find(id => io.sockets.sockets.has(id))
+      || [...io.sockets.sockets.keys()][0]
+      || null;
+    const actualizarAgente = req.query.refresh === '1';
+
     // Cada consulta manual del panel lee fresco, sin caché: el usuario acaba
     // de enchufar algo y necesita ver la realidad ahora.
-    const [inventory, logical, jobsSummary] = await Promise.all([
-      getInventory({ force: true }),
+    const [inventory, logical, jobsSummary, agenteActualizado] = await Promise.all([
+      getInventory({ force: !agenteId }),
       readLogicalPrinters(),
-      Promise.resolve(jobSummary())
+      Promise.resolve(jobSummary()),
+      agenteId
+        ? (actualizarAgente ? refreshAgentInventory(agenteId) : Promise.resolve(agenteInventario.get(agenteId) || null))
+        : Promise.resolve(null)
     ]);
+    const agenteRemoto = agenteActualizado || (agenteId ? agenteInventario.get(agenteId) : null);
 
     // Para cada rol se resuelve el destino AHORA, con el inventario ya leído
     // fresco. Así el panel muestra de dónde viene cada asignación: automática,
@@ -999,7 +1031,6 @@ app.get('/api/admin/printers', authenticateToken, async (req, res) => {
       });
     }
 
-    const agenteRemoto = [...agenteInventario.values()][0] || null;
     const logicasMostradas = agenteRemoto?.logicas?.length
       ? agenteRemoto.logicas.map(printer => {
         const cola = agenteRemoto.impresoras?.find(item => item.cola === printer.destino);
@@ -1073,6 +1104,13 @@ app.get('/api/admin/printers', authenticateToken, async (req, res) => {
           actualizado: agenteRemoto.recibidoEn || null
         }
         : { conectado: false, impresoras: [], logicas: [] },
+      avisoDeteccion: actualizarAgente && !agenteActualizado
+        ? agenteId
+          ? 'El agente no respondió a tiempo. Se muestra el último inventario recibido; revisa que el programa del agente siga abierto.'
+          : (process.env.RENDER
+            ? 'No hay agente de impresión conectado. Render no puede detectar la impresora USB; inicia el agente en la computadora donde está conectada.'
+            : null)
+        : null,
       // Dónde se imprime de verdad. Es la pregunta que un dueño se hace al ver
       // una lista de impresoras, así que se responde explícitamente.
       notaImpresion: agenteRemoto
@@ -1559,14 +1597,18 @@ server.listen(process.env.PORT || 3000, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${process.env.PORT || 3000}`);
   console.log('🔌 Socket.IO habilitado para impresiones remotas.');
 
-  if (process.env.RENDER && AGENT_TOKEN_ORIGEN !== 'entorno') {
+  if (!AGENT_AUTH_REQUIRED) {
+    console.warn('⚠ AGENT_AUTH_REQUIRED está desactivado: cualquiera que acceda al socket puede enviar trabajos de impresión y recibir comandas. Úsalo solo durante pruebas.');
+  } else if (process.env.RENDER && AGENT_TOKEN_ORIGEN !== 'entorno') {
     console.warn('⚠ Render está usando un token de agente que puede cambiar al reiniciar. Define AGENT_TOKEN en Render y usa el mismo valor en el equipo de impresión.');
   }
 
   // El secreto se imprime para que el dueño del restaurante pueda autorizar a su
   // agente. Si viene del entorno no se imprime: ya está puesto a propósito y no
   // hace falta que acabe en un log público.
-  if (AGENT_TOKEN_ORIGEN === 'entorno') {
+  if (!AGENT_AUTH_REQUIRED) {
+    console.log('🔓 Autenticación del agente desactivada por configuración de pruebas.');
+  } else if (AGENT_TOKEN_ORIGEN === 'entorno') {
     console.log('🔑 Secreto del agente: tomado de AGENT_TOKEN (no se muestra).');
   } else {
     console.log('🔑 Secreto del agente (ponlo en AGENT_TOKEN del equipo de las impresoras):');

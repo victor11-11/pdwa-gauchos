@@ -8,7 +8,7 @@
 
 import { io } from 'socket.io-client';
 import { printBytes, getDiagnostics, printJobs } from './utils/printer/index.js';
-import { resolveAgentToken } from './utils/agente-token.js';
+import { resolveAgentToken, agentAuthRequired } from './utils/agente-token.js';
 
 // Solo etiqueta los logs. La impresora real se decide en runtime.
 const tag = process.env.PRINTER_LOG_TAG || 'POS';
@@ -60,6 +60,7 @@ const printOnClient = async (content, options = {}) => {
     return result;
   }
 
+  if (result.warning) warn(result.warning);
   log(`Enviado a ${result.queue} (origen: ${result.source}). Trabajo ${result.jobId}.`);
   return result;
 };
@@ -68,12 +69,19 @@ const printOnClient = async (content, options = {}) => {
 // restaurante, así que se presenta con el secreto. Si servidor y agente están en
 // el mismo equipo, se lee el mismo archivo y no hay nada que configurar; si
 // están en equipos distintos, el secreto se copia a AGENT_TOKEN.
-const { token: AGENT_TOKEN, origen: tokenOrigen } = resolveAgentToken();
+const AGENT_AUTH_REQUIRED = agentAuthRequired();
+const { token: AGENT_TOKEN, origen: tokenOrigen } = AGENT_AUTH_REQUIRED
+  ? resolveAgentToken()
+  : { token: null, origen: 'desactivado' };
+
+if (!AGENT_AUTH_REQUIRED) {
+  warn('Autenticación desactivada: solo usa este modo durante pruebas en una red de confianza.');
+}
 
 const socket = io(socketUrl, {
   path: '/socket.io',
   transports: ['websocket', 'polling'],
-  auth: { token: AGENT_TOKEN },
+  auth: AGENT_AUTH_REQUIRED ? { token: AGENT_TOKEN } : {},
   reconnection: true,
   reconnectionAttempts: Infinity,
   reconnectionDelay: 1000,
@@ -85,13 +93,17 @@ const socket = io(socketUrl, {
  * Avisa al servidor qué hay en este equipo. El panel lo muestra, así el
  * administrador no tiene que adivinar por qué no le sale la comanda.
  */
-const reportInventory = async () => {
+const reportInventory = async (reply = null, announceSelections = false) => {
   try {
     const diag = await getDiagnostics();
     const resumen = [];
 
     for (const logical of diag.impresorasLogicas || []) {
       resumen.push(`${logical.label}: ${logical.destino || 'SIN IMPRESORA'}${logical.aviso ? ` (${logical.aviso})` : ''}`);
+      if (announceSelections && logical.destino) {
+        const detected = (diag.impresorasDetectadas || []).find(printer => printer.cola === logical.destino);
+        log(`Impresora seleccionada para ${logical.label}: ${logical.destino}${detected?.modelo ? ` (${detected.modelo})` : ''}`);
+      }
     }
     for (const printer of diag.impresorasDetectadas || []) {
       resumen.push(`cola ${printer.cola}: ${printer.modelo || printer.estado}`);
@@ -112,16 +124,19 @@ const reportInventory = async () => {
     }
 
     // Se envía al servidor para que aparezca en el panel.
-    socket.emit('inventario_impresoras', {
+    const report = {
       agente: tag,
       plataforma: diag.plataforma,
       provider: diag.provider,
       impresoras: diag.impresorasDetectadas,
       logicas: diag.impresorasLogicas,
       resumen: diag.resumenTrabajos
-    });
+    };
+    socket.emit('inventario_impresoras', report);
+    if (typeof reply === 'function') reply(report);
   } catch (error) {
     warn('No se pudo verificar la impresora local:', error?.message || error);
+    if (typeof reply === 'function') reply(null);
   }
 };
 
@@ -132,7 +147,7 @@ socket.on('connect', () => {
 
 // El servidor lo solicita al abrir/actualizar el panel. También refrescamos
 // periódicamente para detectar impresoras conectadas después del arranque.
-socket.on('inventario_solicitado', reportInventory);
+socket.on('inventario_solicitado', (_request, reply) => reportInventory(reply, true));
 setInterval(() => {
   if (socket.connected) reportInventory();
 }, 30000).unref();

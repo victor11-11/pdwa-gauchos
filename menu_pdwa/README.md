@@ -99,9 +99,15 @@ El agente se queda en primer plano y avisa de qué tiene:
 ```
 [POS] Conectado al servidor. Listo para recibir impresiones.
 [POS] Inventario local:
-[POS]   Cocina: Printer_POS-80
-[POS]   Caja: Printer_POS-80
+[POS]   Impresora seleccionada para Cocina: TICKETERA_LOCAL (modelo detectado)
+[POS]   Impresora seleccionada para Caja: TICKETERA_LOCAL (modelo detectado)
 ```
+
+Para una prueba temporal sin validar el secreto, define
+`AGENT_AUTH_REQUIRED=false` tanto en Render como en el equipo del agente y
+reinicia ambos procesos. **No lo dejes así en producción:** cualquier persona
+que alcance el socket podrá conectarse, recibir comandas y enviar trabajos a
+imprimir. Al terminar las pruebas, elimina la variable o cámbiala a `true`.
 
 Desde el panel de administración se ve si el agente está conectado, qué
 impresoras tiene y si la última comanda salió en papel.
@@ -203,6 +209,7 @@ El panel tiene además **Prueba de impresión** y **Limpiar trabajos atascados**
 | `BUSINESS_NAME` | Nombre que sale impreso en los tickets | `Gauchos` |
 | `PRINTER_NAME` | Fuerza una impresora (solo si hay una) | autodetección |
 | `AGENT_TOKEN` | Secreto entre servidor y agente | se genera solo |
+| `AGENT_AUTH_REQUIRED` | Exige el secreto del agente; desactívalo solo para pruebas controladas | `true` |
 | `RATE_FILE_PATH` | Ruta del archivo de tasas; usar una ruta dentro del Persistent Disk en Render | `tasas.json` del proyecto |
 | `SOCKET_URL` | Dirección del servidor, para el agente | Render |
 | `PRINTER_LOG_TAG` | Cómo se llama el agente en los logs | `POS` |

@@ -28,7 +28,7 @@ const looseEquals = (a, b) => {
  *
  * El serial es la unica clave fiable: el nombre del producto USB NO lo es.
  * En la maquina de trabajo la Kadosh se anuncia como "printer/GLPrinter80" en
- * USB pero su cola dice "usb://Printer/POS-80", porque CUPS guardo el nombre
+ * USB pero su cola conserva un nombre antiguo, porque CUPS guardo el nombre
  * viejo. Por eso el cruce va primero por serial.
  */
 export async function bindQueueToDevice(queueInfo, devices) {
@@ -156,26 +156,27 @@ export const invalidateInventory = () => {
  * de saberlo con certeza sin imprimir, aquí solo se afirma lo que se puede
  * comprobar y el resto se marca como dudoso para que quien lo configure decida.
  *
- * Se considera térmica si:
- *   - el equipo USB se verificó como impresora (clase USB 07), o
- *   - la cola se declara como POS/recibo/térmica en su descripción.
+ * Se considera térmica si el modelo o la cola se identifica como POS,
+ * ticketera, ESC/POS o papel térmico; la clase USB 07 solo confirma que es
+ * impresora, no distingue entre térmica, tinta o láser.
  */
-const TERMICAL_WORDS = /\b(pos|thermal|termic|termica|termico|ticket|tickets|recibo|recibos|escpos|esc[-/ ]?pos|factura|facturadora|80mm|58mm|mm\s*80)\b/i;
+const TERMICAL_WORDS = /\b(tm[-_ ]?t\d+|xp[-_ ]?\d{2,3}|pos|thermal|termic|termica|termico|ticket|ticketera|tickets|receipt|recibo|recibos|escpos|esc[-/ ]?pos|factura|facturadora|80mm|58mm|mm\s*80)\b/i;
 
 export function describeThermalCapability(entry) {
   const device = entry?.binding?.device;
-
-  // `kind` solo vale "printer" cuando alguna interfaz USB declaró clase 07.
-  if (device?.kind === 'printer') {
-    return { termica: true, certeza: 'verificada', motivo: `Equipo USB verificado como impresora (${device.model || device.vidPid}).` };
-  }
-  if (device) {
-    return { termica: null, certeza: 'dudosa', motivo: 'Equipo USB presente, pero ninguna interfaz declara clase de impresora.' };
-  }
-
-  const texto = [entry?.makeAndModel, entry?.printerInfo, entry?.deviceUri].filter(Boolean).join(' ');
+  const texto = [device?.model, entry?.makeAndModel, entry?.printerInfo, entry?.deviceUri].filter(Boolean).join(' ');
   if (TERMICAL_WORDS.test(texto)) {
     return { termica: true, certeza: 'declarada', motivo: 'La cola se describe como impresora de tickets.' };
+  }
+
+  if (device) {
+    return {
+      termica: null,
+      certeza: 'dudosa',
+      motivo: device.kind === 'printer'
+        ? 'Es una impresora USB, pero no se pudo confirmar si es térmica.'
+        : 'Equipo USB presente, pero su tipo de impresora no se pudo confirmar.'
+    };
   }
 
   return {

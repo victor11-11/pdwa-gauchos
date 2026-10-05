@@ -748,7 +748,7 @@ const renderPrinters = () => {
             <div class="printer-role-target">
               ${p.colaActual ? escapeHtml(colaVinculada?.modelo || p.colaActual) : '<em>sin asignar</em>'}
             </div>
-            ${p.origen === 'auto' && p.colaActual ? '<div class="printer-role-hint">Elegida automáticamente</div>' : ''}
+            ${['auto', 'auto-thermal', 'auto-default'].includes(p.origen) && p.colaActual ? '<div class="printer-role-hint">Elegida automáticamente</div>' : ''}
             ${p.motivo ? `<div class="printer-role-hint">${escapeHtml(p.motivo)}</div>` : ''}
             <div class="printer-role-actions">
               <select class="printer-select" ${opciones && !agente.conectado ? '' : 'disabled'} data-role="${escapeHtml(p.id)}">
@@ -879,16 +879,18 @@ const loadJobs = async () => {
   }
 };
 
-const loadPrinters = async (forzar = false) => {
+const loadPrinters = async (forzar = false, detectarHardware = false) => {
   if (printersState.cargando && !forzar) return;
   printersState.cargando = true;
   try {
-    printersState.data = await apiPrinters('');
+    printersState.data = await apiPrinters(detectarHardware ? '?refresh=1' : '');
     renderPrinters();
     loadJobs();
+    return printersState.data;
   } catch (err) {
     const status = printersEl('printers-status');
     if (status) status.textContent = err.message;
+    return null;
   } finally {
     printersState.cargando = false;
   }
@@ -901,8 +903,13 @@ if (printersRefresh) {
     const original = printersRefresh.textContent;
     printersRefresh.textContent = 'Detectando…';
     try {
-      await loadPrinters(true);
-      showNotice('Impresoras detectadas de nuevo.');
+      const data = await loadPrinters(true, true);
+      if (!data) return;
+      if (data.avisoDeteccion) {
+        showNotice(data.avisoDeteccion, 'error');
+      } else {
+        showNotice('Inventario de impresoras actualizado.');
+      }
     } finally {
       printersRefresh.disabled = false;
       printersRefresh.textContent = original;

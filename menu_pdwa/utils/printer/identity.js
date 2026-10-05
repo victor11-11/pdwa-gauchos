@@ -1,8 +1,8 @@
 // Identidad fisica de las impresoras.
 //
 // Idea central: el nombre de la cola CUPS y la marca del dispositivo NO son
-// datos fiables. Las termicas baratas reportan "printer"/"POS-80" como
-// descriptores USB, asi que dos impresoras de marcas distintas pueden acabar
+// datos fiables. Las térmicas económicas pueden reportar descriptores USB
+// genéricos, asi que dos impresoras de marcas distintas pueden acabar
 // con el mismo nombre de cola. Lo que si es unico y estable es el hardware:
 // vendor, product y sobre todo el NUMERO DE SERIE.
 //

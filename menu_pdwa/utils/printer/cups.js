@@ -194,8 +194,8 @@ export async function submitJob(queue, filePath, options = {}) {
   if (!ok) return { ok: false, error: stderr || error || 'lp falló' };
 
   // El mensaje de lp sale en español o ingles segun el idioma del sistema:
-  //   "la id solicitada es Printer_POS-80-73 (1 archivo(s))"
-  //   "request id is Printer_POS-80-73 (1 file(s))"
+  //   "la id solicitada es TICKETERA-73 (1 archivo(s))"
+  //   "request id is TICKETERA-73 (1 file(s))"
   // Se busca el identificador en cualquiera de los dos, y como respaldo se
   // toma el ultimo token con forma <cola>-<numero>.
   const match = stdout.match(/(?:request id is|id solicitada es)\s+(\S+)/i);

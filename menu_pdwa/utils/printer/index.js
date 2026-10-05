@@ -201,7 +201,27 @@ export async function resolveDestination(options = {}) {
   //    puntaje y con la presencia del dispositivo como criterio dominante.
   const picked = pickFromInventory(inventory);
   if (picked) {
-    return { queue: picked.queue, logical, source: 'auto', reason: `Detectada automáticamente: ${picked.binding?.device?.model || picked.queue}`, entry: picked, inventory };
+    const source = picked.termica?.termica === true
+      ? 'auto-thermal'
+      : picked.isDefault ? 'auto-default' : 'auto';
+    const warning = picked.termica?.termica === false
+      ? 'Se usará la cola predeterminada, pero no se pudo identificar como impresora térmica. Confirma con una prueba.'
+      : picked.termica?.termica == null
+        ? 'No se pudo confirmar que la impresora sea térmica. Confirma con una prueba.'
+        : null;
+    return {
+      queue: picked.queue,
+      logical,
+      source,
+      reason: picked.isDefault
+        ? `Cola predeterminada del sistema: ${picked.queue}`
+        : picked.termica?.termica === true
+          ? `Impresora térmica detectada: ${picked.queue}`
+          : `Impresora conectada seleccionada: ${picked.queue}`,
+      warning,
+      entry: picked,
+      inventory
+    };
   }
 
   // 5) Una impresora de red puede servir si el rol no exige USB conectada, pero
@@ -230,8 +250,20 @@ export async function resolveDestination(options = {}) {
   };
 }
 
-const pickFromInventory = (inventory) =>
-  (inventory?.printers || []).find(p => p.binding.status === 'connected') || null;
+const pickFromInventory = (inventory) => {
+  const available = (inventory?.printers || []).filter(printer =>
+    printer.accepting !== false
+    && !printer.stopped
+    && ['connected', 'network'].includes(printer.binding?.status)
+  );
+
+  // Primero una cola térmica reconocida. Si no existe, se respeta la cola
+  // predeterminada de CUPS aunque el nombre/modelo no permita clasificarla.
+  return available.find(printer => printer.termica?.termica === true)
+    || available.find(printer => printer.isDefault)
+    || available.find(printer => printer.binding?.status === 'connected' && printer.termica?.termica !== false)
+    || null;
+};
 
 // ---------------------------------------------------------------
 // Envio
@@ -292,6 +324,7 @@ export async function printBytes({ bytes, role = 'kitchen', queue = null, confir
       role,
       reason: destination.reason,
       source: destination.source,
+      warning: destination.warning || null,
       diagnostic: destination
     };
   }
@@ -313,7 +346,8 @@ export async function printBytes({ bytes, role = 'kitchen', queue = null, confir
       jobs.patch(job.id, { status: jobs.STATUS.FAILED, error: result.error });
       return {
         submitted: false, printed: false, jobId: job.id, queue: destination.queue,
-        role, status: jobs.STATUS.FAILED, reason: result.error, source: destination.source
+        role, status: jobs.STATUS.FAILED, reason: result.error, source: destination.source,
+        warning: destination.warning || null
       };
     }
 
@@ -342,7 +376,8 @@ export async function printBytes({ bytes, role = 'kitchen', queue = null, confir
         role,
         status: current?.status,
         reason: current?.reason || null,
-        source: destination.source
+        source: destination.source,
+        warning: destination.warning || null
       };
     }
 
@@ -358,7 +393,8 @@ export async function printBytes({ bytes, role = 'kitchen', queue = null, confir
       queue: destination.queue,
       role,
       status: jobs.STATUS.SENT,
-      source: destination.source
+      source: destination.source,
+      warning: destination.warning || null
     };
   } finally {
     try { await fs.unlink(tempFile); } catch { /* el archivo temporal ya no importa */ }

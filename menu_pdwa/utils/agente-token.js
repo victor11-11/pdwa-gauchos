@@ -6,6 +6,10 @@ import { fileURLToPath } from 'url';
 const raizProyecto = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const archivoToken = path.join(raizProyecto, 'agente.token');
 
+/** La autenticación solo se desactiva con una opción explícita de pruebas. */
+export const agentAuthRequired = () =>
+  !['false', '0', 'off', 'no'].includes(String(process.env.AGENT_AUTH_REQUIRED ?? 'true').trim().toLowerCase());
+
 /**
  * Secreto compartido entre el servidor y el agente de impresión local.
  *
