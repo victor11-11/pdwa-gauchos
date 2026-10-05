@@ -32,6 +32,7 @@ import {
 const createJob = createPrintJob;
 const patchJob = patchPrintJob;
 import { getRateStatus, loadRates, refreshIfStale, refreshRates, setActiveCurrency, startBCVUpdater } from './utils/bcv.js';
+import { resolveAgentToken, mismoSecreto } from './utils/agente-token.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,6 +41,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = 'clave_secreta_super_segura_menu_2026';
 const server = http.createServer(app);
+
+// Secreto del socket de impresión. Ver utils/agente-token.js: por este canal
+// salen las comandas con datos de clientes, así que no puede estar abierto.
+const { token: AGENT_TOKEN, origen: AGENT_TOKEN_ORIGEN } = resolveAgentToken();
+
 const io = new Server(server, {
   cors: {
     origin: '*',
@@ -140,6 +146,18 @@ const agenteInventario = new Map();
 const trabajosEnAgente = new Map();
 
 const PRINT_JOB_TIMEOUT_MS = 45000;
+
+// Puerta del socket. Sin esto, el socket es una impresora pública: bastaría con
+// conocer la dirección para leer las comandas (que llevan el nombre del cliente)
+// y mandar a imprimir lo que se quiera en la ticketera del restaurante.
+io.use((socket, next) => {
+  const recibido = socket.handshake?.auth?.token || socket.handshake?.query?.token;
+  if (!mismoSecreto(recibido, AGENT_TOKEN)) {
+    console.warn(`⛔ Socket rechazado${socket.handshake?.address ? ` desde ${socket.handshake.address}` : ''}: secreto inválido`);
+    return next(new Error('Secreto de agente inválido'));
+  }
+  next();
+});
 
 io.on('connection', (socket) => {
   console.log('🖨️ Agente de impresión conectado:', socket.id);
@@ -1523,4 +1541,14 @@ app.delete('/api/admin/products/:id', authenticateToken, (req, res) => {
 server.listen(process.env.PORT || 3000, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${process.env.PORT || 3000}`);
   console.log('🔌 Socket.IO habilitado para impresiones remotas.');
+
+  // El secreto se imprime para que el dueño del restaurante pueda autorizar a su
+  // agente. Si viene del entorno no se imprime: ya está puesto a propósito y no
+  // hace falta que acabe en un log público.
+  if (AGENT_TOKEN_ORIGEN === 'entorno') {
+    console.log('🔑 Secreto del agente: tomado de AGENT_TOKEN (no se muestra).');
+  } else {
+    console.log('🔑 Secreto del agente (ponlo en AGENT_TOKEN del equipo de las impresoras):');
+    console.log(`   ${AGENT_TOKEN}`);
+  }
 });

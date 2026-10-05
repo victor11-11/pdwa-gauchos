@@ -10,3 +10,5 @@ tasas.json
 # cola de ese PC), no tienen sentido en otro equipo y estorban al diagnóstico.
 # El archivo de ejemplo sí se sube: es una plantilla, no configuración real.
 printer.config.json
+# Secreto del socket de impresion: propio de cada instalacion.
+agente.token

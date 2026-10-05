@@ -8,6 +8,7 @@
 
 import { io } from 'socket.io-client';
 import { printBytes, getDiagnostics, printJobs } from './utils/printer/index.js';
+import { resolveAgentToken } from './utils/agente-token.js';
 
 // Solo etiqueta los logs. La impresora real se decide en runtime.
 const tag = process.env.PRINTER_LOG_TAG || 'POS';
@@ -63,9 +64,16 @@ const printOnClient = async (content, options = {}) => {
   return result;
 };
 
+// El servidor no acepta a cualquiera: este canal imprime en la ticketera del
+// restaurante, así que se presenta con el secreto. Si servidor y agente están en
+// el mismo equipo, se lee el mismo archivo y no hay nada que configurar; si
+// están en equipos distintos, el secreto se copia a AGENT_TOKEN.
+const { token: AGENT_TOKEN, origen: tokenOrigen } = resolveAgentToken();
+
 const socket = io(socketUrl, {
   path: '/socket.io',
   transports: ['websocket', 'polling'],
+  auth: { token: AGENT_TOKEN },
   reconnection: true,
   reconnectionAttempts: Infinity,
   reconnectionDelay: 1000,
@@ -124,9 +132,25 @@ socket.on('connect', async () => {
 });
 
 socket.on('connect_error', (error) => {
+  const motivo = String(error?.message || error || '');
+
+  // Un secreto incorrecto reintenta eternamente sin decir qué hacer, y eso es lo
+  // peor: el dueño ve el agente "conectándose" y cree que la impresora falla.
+  if (/Secreto de agente/i.test(motivo)) {
+    fail('El servidor rechazó este agente: el secreto no coincide.');
+    fail(`URL: ${socketUrl}`);
+    if (tokenOrigen === 'archivo') {
+      fail('Este equipo tiene su propio agente.token y el servidor usa otro.');
+    }
+    fail('Solución: copia el secreto que imprime el servidor al arrancar y ponlo');
+    fail('         en la variable AGENT_TOKEN de este equipo, o borra el');
+    fail('         archivo agente.token si servidor y agente están aquí mismo.');
+    return;
+  }
+
   fail('No se pudo conectar al servidor.');
   fail(`URL: ${socketUrl}`);
-  fail(`Motivo: ${error?.message || error}`);
+  fail(`Motivo: ${motivo}`);
   fail('Verifica que el backend esté sirviendo /socket.io');
 });
 
