@@ -4,7 +4,9 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "printer": "node utils/printer/cli.js",
+    "agente": "node impresor_local.js"
   },
   "keywords": [],
   "type": "module",

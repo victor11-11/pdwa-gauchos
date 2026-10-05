@@ -1,0 +1,12 @@
+node_modules/
+.env
+*.log
+
+# La tasa BCV es dato vivo: nunca debe volver al repo, o un deploy
+# restauraría la tasa vieja y los tickets saldrían con el número anterior.
+tasas.json
+
+# Enlaces de impresora: son propios de cada equipo (el serial y el nombre de la
+# cola de ese PC), no tienen sentido en otro equipo y estorban al diagnóstico.
+# El archivo de ejemplo sí se sube: es una plantilla, no configuración real.
+printer.config.json

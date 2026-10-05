@@ -301,8 +301,6 @@
 
                   <div class="pos-summary">
                     <div class="summary-row"><span>Subtotal</span><strong id="pos-subtotal">$0.00</strong></div>
-                    <div class="summary-row"><span>Servicio</span><strong>$0.00</strong></div>
-                    <div class="summary-row"><span>Impuestos</span><strong>$0.00</strong></div>
                   </div>
 
                   <div class="summary-total">
@@ -587,6 +585,40 @@
                   <label class="check-label"><input id="setting-confirm-charge" type="checkbox" checked /> <span>Confirmar cobros antes de procesar</span></label>
                   <button id="save-preferences" type="button" class="primary-button">Guardar preferencias</button>
                 </div>
+              </section>
+              <section class="surface-card form-card" id="printers-card">
+                <div class="card-heading">
+                  <div><span class="icon-tile">🖨</span><div><h3>Impresoras</h3><p>Se detectan solas. Solo hay que indicarle a cada una su función.</p></div></div>
+                  <button id="printers-refresh" type="button" class="ghost-button" title="Volver a detectar">↻ Detectar</button>
+                </div>
+
+                <div id="printers-avisos" class="printers-alerts" hidden></div>
+
+                <div class="printers-status" id="printers-status">Buscando impresoras…</div>
+
+                <div class="printers-agent" id="printers-agente" hidden>
+                  <h4 class="printers-subtitle">Ticketera del agente <span class="printers-hint">en otro equipo</span></h4>
+                  <div class="printers-list" id="printers-agente-lista"></div>
+                </div>
+
+                <div class="printers-grid" id="printers-logicas"></div>
+
+                <h4 class="printers-subtitle">Colas instaladas <span class="printers-hint">lo que el sistema operativo ve</span></h4>
+                <div class="printers-list" id="printers-colas"></div>
+
+                <div id="printers-unprovisioned" class="printers-unprovisioned" hidden>
+                  <h4 class="printers-subtitle">Equipos conectados sin usar</h4>
+                  <p class="section-note">Se enchufaron y el sistema todavía no tiene una cola para ellos. Un clic los deja listos.</p>
+                  <div class="printers-list" id="printers-nuevos"></div>
+                </div>
+
+                <details class="printers-jobs">
+                  <summary>Historial de impresiones <span id="printers-jobs-summary" class="printers-hint"></span></summary>
+                  <div class="printers-actions">
+                    <button id="printers-clear-stuck" type="button" class="outline-button">Limpiar trabajos atascados</button>
+                  </div>
+                  <div class="printers-list" id="printers-jobs-list"></div>
+                </details>
               </section>
               <section class="surface-card form-card">
                 <div class="card-heading"><div><span class="icon-tile">⌁</span><div><h3>Sesión y seguridad</h3><p>Protege el acceso a tu operación.</p></div></div></div>

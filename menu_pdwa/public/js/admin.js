@@ -158,33 +158,35 @@ function showNotice(message, type = 'success') {
 
 async function loadBcvRates() {
   try {
-    const res = await fetch('/api/tasas', { cache: 'no-store' });
-    const data = await readApiJson(res);
-    if (!res.ok) throw new Error(data.error || 'No se pudo cargar la tasa BCV');
-
+    const data = await fetchJsonWithWarmup('/api/tasas');
     const usd = Number(data.tasa_usd || 0);
     const eur = Number(data.tasa_eur || 0);
+    const usdTexto = data.tasa_usd_texto || String(usd);
+    const eurTexto = data.tasa_eur_texto || String(eur);
     const active = String(data.moneda_activa || 'USD').toUpperCase();
     const updated = data.ultima_actualizacion ? new Date(data.ultima_actualizacion).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' }) : 'Sin actualización';
+    const ageMs = data.ultima_actualizacion ? Date.now() - new Date(data.ultima_actualizacion).getTime() : Infinity;
+    const isStale = !(ageMs < 6 * 60 * 60 * 1000);
 
     window.__bcvRate = active === 'EUR' ? eur : usd;
     if (bcvRateValue) {
-      bcvRateValue.textContent = `USD ${usd.toFixed(2)} · EUR ${eur.toFixed(2)}`;
+      bcvRateValue.textContent = `USD ${usdTexto} · EUR ${eurTexto}`;
     }
     if (bcvRateMeta) {
-      bcvRateMeta.textContent = `Actualizado ${updated} · Activa: ${active}`;
+      const warning = data.ultimo_error ? ` · ${data.ultimo_error}` : (isStale ? ' · tasa vencida, reintentando' : '');
+      bcvRateMeta.textContent = `Actualizado ${updated} · Activa: ${active}${warning}`;
     }
     if (bcvCurrencySelect) {
       bcvCurrencySelect.value = active;
     }
     if (document.getElementById('client-bcv-rate')) {
-      const rate = active === 'EUR' ? eur : usd;
-      document.getElementById('client-bcv-rate').textContent = `${active}: ${rate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs`;
+      const rateTexto = active === 'EUR' ? eurTexto : usdTexto;
+      document.getElementById('client-bcv-rate').textContent = `${active}: ${rateTexto} Bs`;
     }
     const headerBadge = document.getElementById('bcv-header-badge');
     if (headerBadge) {
-      const activeRate = active === 'EUR' ? eur : usd;
-      headerBadge.textContent = `Tasa BCV: ${activeRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs/$`;
+      const activeTexto = active === 'EUR' ? eurTexto : usdTexto;
+      headerBadge.textContent = `Tasa BCV: ${activeTexto} Bs/$`;
     }
     return data;
   } catch (err) {
@@ -196,9 +198,7 @@ async function loadBcvRates() {
 
 async function refreshBcvRates() {
   try {
-    const res = await fetch('/api/tasas/actualizar', { method: 'POST' });
-    const data = await readApiJson(res);
-    if (!res.ok) throw new Error(data.error || 'No se pudo actualizar la tasa BCV');
+    const data = await fetchJsonWithWarmup('/api/tasas/actualizar', { method: 'POST' });
     await loadBcvRates();
     showNotice('Tasa BCV actualizada.', 'success');
     return data;
@@ -605,19 +605,399 @@ if (reportsButton) reportsButton.addEventListener('click', () => {
 const printerTestButton = document.getElementById('printer-test-btn');
 if (printerTestButton) {
   printerTestButton.addEventListener('click', async () => {
+    const original = printerTestButton.textContent;
+    printerTestButton.disabled = true;
+    printerTestButton.textContent = 'Imprimiendo…';
     try {
-      const res = await fetch(`${API_URL}/admin/printer/test`, {
+      const res = await fetch(`${API_URL}/admin/printers/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
       });
       const data = await readApiJson(res);
       if (!res.ok) throw new Error(data.error || 'No se pudo ejecutar la prueba de impresión');
-      showNotice(data.message || 'Prueba de impresora enviada.');
+      // El mensaje distingue "salió papel" de "se envió". Antes esas dos cosas
+      // iban juntas, y por eso se informaba éxito con la impresora desconectada.
+      showNotice(data.message || 'Prueba enviada.', data.printed === true ? 'success' : 'error');
+      loadPrinters();
     } catch (err) {
       showNotice(err.message, 'error');
+    } finally {
+      printerTestButton.disabled = false;
+      printerTestButton.textContent = original;
     }
   });
 }
+
+// ------------------------------------------------------------------
+// Panel de impresoras
+//
+// Todo aquí parte de una sola idea: el sistema sabe qué impresora hay conectada
+// de verdad, y el usuario solo tiene que decidir qué hace cada una. Nada de
+// escribir nombres de marca a mano.
+// ------------------------------------------------------------------
+
+const printersState = { data: null, cargando: false };
+
+const printersEl = (id) => document.getElementById(id);
+
+const apiPrinters = async (ruta, opciones = {}) => {
+  const res = await fetch(`${API_URL}/admin/printers${ruta}`, {
+    ...opciones,
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...(opciones.headers || {}) }
+  });
+  const data = await readApiJson(res);
+  if (!res.ok) throw new Error(data.error || 'No se pudo completar la operación');
+  return data;
+};
+
+/** Traduce el estado interno a algo que un dueño de restaurante entienda. */
+const ESTADO_COLA = {
+  connected: { texto: 'Conectada', clase: 'ok' },
+  'device-missing': { texto: 'Impresora desconectada', clase: 'bad' },
+  network: { texto: 'En red', clase: 'warn' },
+  orphan: { texto: 'No verificable', clase: 'warn' },
+  disabled: { texto: 'Desactivada', clase: 'muted' }
+};
+
+const renderPrinters = () => {
+  const data = printersState.data;
+  if (!data) return;
+
+  // --- avisos (duplicadas, sin impresoras, etc.) ---
+  const avisos = [];
+  for (const dup of data.duplicadas || []) avisos.push(dup.aviso);
+  for (const logica of data.logicas || []) {
+    if (!logica.destino) avisos.push(`No hay impresora para "${logica.label}". Conecta una y asígnala aquí.`);
+  }
+  const alertBox = printersEl('printers-avisos');
+  if (avisos.length && alertBox) {
+    alertBox.innerHTML = avisos.map(a => `<div class="printers-alert">⚠ ${escapeHtml(a)}</div>`).join('');
+    alertBox.hidden = false;
+  } else if (alertBox) {
+    alertBox.hidden = true;
+  }
+
+  // --- resumen ---
+  const status = printersEl('printers-status');
+  const conectadas = (data.impresoras || []).filter(p => p.estado === 'connected');
+  const agente = data.agente || {};
+  if (status) {
+    if (agente.conectado) {
+      status.textContent = data.notaImpresion || 'Las comandas se envían a la ticketera del agente.';
+    } else if (data.cupsDisponible === false) {
+      status.textContent = 'Este equipo no tiene sistema de impresión (CUPS). Las comandas se guardan igual, pero no se imprimen.';
+    } else if (conectadas.length) {
+      status.textContent = `${conectadas.length} impresora${conectadas.length > 1 ? 's' : ''} lista${conectadas.length > 1 ? 's' : ''} para usar en este equipo.`;
+    } else {
+      status.textContent = 'No hay ninguna impresora conectada ahora mismo.';
+    }
+  }
+
+  // Inventario que reportó el agente de otro equipo. Se muestra aparte porque no
+  // son las impresoras de este servidor y mezclarlas confundiría.
+  const listaAgente = printersEl('printers-agente-lista');
+  const bloqueAgente = printersEl('printers-agente');
+  if (bloqueAgente && listaAgente) {
+    bloqueAgente.hidden = !agente.conectado;
+    if (agente.conectado) {
+      const impresoras = agente.impresoras || [];
+      listaAgente.innerHTML = impresoras.length
+        ? impresoras.map(p => {
+          const estado = ESTADO_COLA[p.estado] || { texto: p.estado, clase: 'muted' };
+          return `<div class="printer-row compact">
+              <div class="printer-row-main">
+                <div class="printer-row-name">${escapeHtml(p.cola)} <span class="badge ${estado.clase}">${escapeHtml(estado.texto)}</span></div>
+                <div class="printer-row-sub">${escapeHtml(p.modelo || 'modelo desconocido')}${p.pendientes ? ` · ${p.pendientes} pendiente(s)` : ''}</div>
+                ${p.motivo ? `<div class="printer-row-why">${escapeHtml(p.motivo)}</div>` : ''}
+              </div>
+            </div>`;
+        }).join('')
+        : '<p class="section-note">El agente está conectado pero no ha reportado ninguna impresora.</p>';
+    }
+  }
+
+  // --- roles ---
+  const grid = printersEl('printers-logicas');
+  if (grid) {
+    const bindings = data.logicas || [];
+    if (!bindings.length) {
+      grid.innerHTML = '<p class="section-note">No hay impresoras lógicas configuradas.</p>';
+    } else {
+      grid.innerHTML = bindings.map(p => {
+        const colaVinculada = (data.impresoras || []).find(c => c.cola === p.colaActual);
+        const estado = ESTADO_COLA[p.estadoVinculada] || (p.colaActual ? { texto: 'Conectada', clase: 'ok' } : { texto: 'Sin asignar', clase: 'warn' });
+        const opciones = (data.impresoras || [])
+          .filter(c => c.estado === 'connected')
+          .map(c => `<option value="${escapeHtml(c.cola)}" ${c.cola === p.colaActual ? 'selected' : ''}>${escapeHtml(c.modelo || c.cola)} (${escapeHtml(c.cola)})</option>`)
+          .join('');
+
+        return `
+          <div class="printer-role" data-role="${escapeHtml(p.id)}">
+            <div class="printer-role-head">
+              <strong>${escapeHtml(p.label)}</strong>
+              <span class="badge ${estado.clase}">${escapeHtml(estado.texto)}</span>
+            </div>
+            <div class="printer-role-target">
+              ${p.colaActual ? escapeHtml(colaVinculada?.modelo || p.colaActual) : '<em>sin asignar</em>'}
+            </div>
+            ${p.origen === 'auto' && p.colaActual ? '<div class="printer-role-hint">Elegida automáticamente</div>' : ''}
+            ${p.motivo ? `<div class="printer-role-hint">${escapeHtml(p.motivo)}</div>` : ''}
+            <div class="printer-role-actions">
+              <select class="printer-select" ${opciones ? '' : 'disabled'} data-role="${escapeHtml(p.id)}">
+                ${opciones ? opciones : '<option value="">Ninguna conectada</option>'}
+              </select>
+              <button type="button" class="ghost-button" data-printer-action="test" data-role="${escapeHtml(p.id)}" ${p.colaActual ? '' : 'disabled'}>Probar</button>
+              <button type="button" class="ghost-button" data-printer-action="toggle" data-role="${escapeHtml(p.id)}">${p.enabled ? 'Apagar' : 'Encender'}</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+  }
+
+  // --- colas del sistema ---
+  const listaColas = printersEl('printers-colas');
+  if (listaColas) {
+    const impresoras = data.impresoras || [];
+    if (!impresoras.length) {
+      listaColas.innerHTML = '<p class="section-note">No hay ninguna cola de impresión instalada.</p>';
+    } else {
+      listaColas.innerHTML = impresoras.map(p => {
+        const estado = ESTADO_COLA[p.estado] || { texto: p.estado, clase: 'muted' };
+        const detalle = [p.marca, p.usb, p.serial].filter(Boolean).join(' · ');
+        return `
+          <div class="printer-row">
+            <div class="printer-row-main">
+              <div class="printer-row-name">${escapeHtml(p.cola)} <span class="badge ${estado.clase}">${escapeHtml(estado.texto)}</span></div>
+              <div class="printer-row-sub">${escapeHtml(p.modelo || 'modelo desconocido')}${detalle ? ` · ${escapeHtml(detalle)}` : ''}</div>
+              <div class="printer-row-why">${escapeHtml(p.motivo || '')}</div>
+              ${p.pendientes > 0 ? `<div class="printer-row-warn">${p.pendientes} trabajo(s) esperando. La impresora no los está recibiendo.</div>` : ''}
+            </div>
+            <div class="printer-row-actions">
+              <button type="button" class="ghost-button" data-printer-action="test" data-queue="${escapeHtml(p.cola)}" ${p.estado === 'connected' ? '' : 'disabled'}>Probar</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+  }
+
+  // --- equipos conectados sin cola ---
+  const nuevos = data.sinAprovisionar || [];
+  const boxNuevo = printersEl('printers-unprovisioned');
+  const listaNuevos = printersEl('printers-nuevos');
+  if (boxNuevo && listaNuevos) {
+    boxNuevo.hidden = nuevos.length === 0;
+    if (nuevos.length) {
+      listaNuevos.innerHTML = nuevos.map(d => `
+        <div class="printer-row">
+          <div class="printer-row-main">
+            <div class="printer-row-name">${escapeHtml(d.modelo || 'Equipo sin identificar')}</div>
+            <div class="printer-row-sub">${escapeHtml([d.marca, d.usb, d.serial].filter(Boolean).join(' · '))}</div>
+            <div class="printer-row-why">Conectada, pero sin una cola donde imprimir.</div>
+          </div>
+          <div class="printer-row-actions">
+            <button type="button" class="primary-button" data-printer-action="provision" data-serial="${escapeHtml(d.serial)}">Preparar</button>
+          </div>
+        </div>`).join('');
+    }
+  }
+
+  // --- historial ---
+  renderJobs(data.resumenTrabajos);
+};
+
+const renderJobs = (resumen) => {
+  const lista = printersEl('printers-jobs-list');
+  const etiqueta = printersEl('printers-jobs-summary');
+  if (etiqueta && resumen) {
+    const partes = [];
+    if (resumen.byStatus?.printed) partes.push(`${resumen.byStatus.printed} impresos`);
+    if (resumen.byStatus?.stuck) partes.push(`${resumen.byStatus.stuck} atascados`);
+    if (resumen.byStatus?.failed) partes.push(`${resumen.byStatus.failed} con error`);
+    etiqueta.textContent = partes.length ? `· ${partes.join(', ')}` : '';
+  }
+  if (!lista) return;
+  if (!resumen || !resumen.total) {
+    lista.innerHTML = '<p class="section-note">Todavía no se ha impreso nada en esta sesión.</p>';
+    return;
+  }
+  if (!resumen.recientes) {
+    lista.innerHTML = '<p class="section-note">Consulta el historial para ver el detalle.</p>';
+  }
+};
+
+const loadJobs = async () => {
+  const lista = printersEl('printers-jobs-list');
+  if (!lista) return;
+  try {
+    const data = await apiPrinters('/jobs?limit=20');
+    const etiqueta = printersEl('printers-jobs-summary');
+    const s = data.resumen || {};
+    if (etiqueta) {
+      const partes = [];
+      if (s.byStatus?.printed) partes.push(`${s.byStatus.printed} impresos`);
+      if (s.byStatus?.stuck) partes.push(`${s.byStatus.stuck} atascados`);
+      if (s.byStatus?.failed) partes.push(`${s.byStatus.failed} con error`);
+      etiqueta.textContent = partes.length ? `· ${partes.join(', ')}` : '';
+    }
+
+    if (!data.jobs?.length) {
+      lista.innerHTML = '<p class="section-note">Todavía no se ha impreso nada en esta sesión.</p>';
+      return;
+    }
+
+    const ETIQUETA = {
+      printed: ['Impreso', 'ok'],
+      sent: ['Enviado', 'warn'],
+      sending: ['Enviando', 'warn'],
+      stuck: ['Atascado', 'bad'],
+      failed: ['Error', 'bad'],
+      unconfirmable: ['Sin confirmar', 'warn']
+    };
+
+    lista.innerHTML = data.jobs.map(job => {
+      const [texto, clase] = ETIQUETA[job.status] || [job.status, 'muted'];
+      const cuando = new Date(job.createdAt).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+      return `
+        <div class="printer-row compact">
+          <div class="printer-row-main">
+            <div class="printer-row-name">${escapeHtml(texto)} · ${escapeHtml(job.queue || 'sin destino')} <span class="badge ${clase}">${escapeHtml(job.role || '')}</span></div>
+            <div class="printer-row-sub">${cuando}${job.cupsJobId ? ` · ${escapeHtml(job.cupsJobId)}` : ''}${job.waitedMs != null ? ` · ${job.waitedMs}ms` : ''}</div>
+            ${job.reason ? `<div class="printer-row-why">${escapeHtml(job.reason)}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    lista.innerHTML = `<p class="section-note">${escapeHtml(err.message)}</p>`;
+  }
+};
+
+const loadPrinters = async (forzar = false) => {
+  if (printersState.cargando && !forzar) return;
+  printersState.cargando = true;
+  try {
+    printersState.data = await apiPrinters('');
+    renderPrinters();
+    loadJobs();
+  } catch (err) {
+    const status = printersEl('printers-status');
+    if (status) status.textContent = err.message;
+  } finally {
+    printersState.cargando = false;
+  }
+};
+
+const printersRefresh = printersEl('printers-refresh');
+if (printersRefresh) {
+  printersRefresh.addEventListener('click', async () => {
+    printersRefresh.disabled = true;
+    const original = printersRefresh.textContent;
+    printersRefresh.textContent = 'Detectando…';
+    try {
+      await loadPrinters(true);
+      showNotice('Impresoras detectadas de nuevo.');
+    } finally {
+      printersRefresh.disabled = false;
+      printersRefresh.textContent = original;
+    }
+  });
+}
+
+// Un solo manejador para todos los botones: la tarjeta se vuelve a pintar
+// después de cada acción, así que no hay que reconectar nada.
+document.getElementById('printers-card')?.addEventListener('click', async (event) => {
+  const boton = event.target.closest('[data-printer-action]');
+  if (!boton) return;
+
+  const accion = boton.dataset.printerAction;
+  const rol = boton.dataset.role;
+  const cola = boton.dataset.queue;
+  const serial = boton.dataset.serial;
+  const original = boton.textContent;
+  boton.disabled = true;
+  boton.textContent = '…';
+
+  try {
+    if (accion === 'test') {
+      const data = await apiPrinters('/test', {
+        method: 'POST',
+        body: JSON.stringify({ queue: cola || null, role: rol || null })
+      });
+      showNotice(data.message || 'Prueba enviada.', data.printed === true ? 'success' : 'warning');
+    }
+
+    if (accion === 'provision') {
+      const data = await apiPrinters('/provision', { method: 'POST', body: JSON.stringify({ serial }) });
+      showNotice(data.message || 'Impresora preparada.');
+    }
+
+    if (accion === 'toggle') {
+      const actual = printersState.data?.logicas?.find(p => p.id === rol);
+      const data = await apiPrinters('/toggle', { method: 'POST', body: JSON.stringify({ logicalId: rol, enabled: !actual?.enabled }) });
+      showNotice(data.message || 'Estado cambiado.');
+    }
+
+    await loadPrinters(true);
+  } catch (err) {
+    showNotice(err.message, 'error');
+    boton.disabled = false;
+    boton.textContent = original;
+  }
+});
+
+// Al cambiar el desplegable se enlaza esa cola al rol.
+document.getElementById('printers-card')?.addEventListener('change', async (event) => {
+  const select = event.target.closest('.printer-select');
+  if (!select) return;
+
+  const logicalId = select.dataset.role;
+  const queue = select.value;
+  select.disabled = true;
+
+  try {
+    if (!queue) {
+      await apiPrinters('/unbind', { method: 'POST', body: JSON.stringify({ logicalId }) });
+      showNotice('Se quitó la asignación. Ahora se elige automáticamente.');
+    } else {
+      const data = await apiPrinters('/bind', { method: 'POST', body: JSON.stringify({ logicalId, queue }) });
+      showNotice(data.message, data.connected ? 'success' : 'warning');
+    }
+    await loadPrinters(true);
+  } catch (err) {
+    showNotice(err.message, 'error');
+    select.disabled = false;
+  }
+});
+
+const clearStuckButton = printersEl('printers-clear-stuck');
+if (clearStuckButton) {
+  clearStuckButton.addEventListener('click', async () => {
+    clearStuckButton.disabled = true;
+    const original = clearStuckButton.textContent;
+    clearStuckButton.textContent = 'Limpiando…';
+    try {
+      const data = await apiPrinters('/clear-stuck', { method: 'POST', body: JSON.stringify({}) });
+      showNotice(data.message || 'Colas limpiadas.');
+      await loadPrinters(true);
+      await loadJobs();
+    } catch (err) {
+      showNotice(err.message, 'error');
+    } finally {
+      clearStuckButton.disabled = false;
+      clearStuckButton.textContent = original;
+    }
+  });
+}
+
+// El panel de impresoras solo se consulta con sesión iniciada. Antes se pedía
+// igualmente y el usuario veía un error de autenticación nada más abrir.
+const pedirPrintersSiHaySesion = () => {
+  if (!token) return;
+  if (printersEl('printers-card')) loadPrinters();
+};
+
+// Al final del archivo, cuando ya existen todas las definiciones: si venía una
+// sesión guardada, el panel aparece con las impresoras ya detectadas.
+pedirPrintersSiHaySesion();
 
 const chargeSaleButton = document.getElementById('charge-sale-btn');
 const bcvRateValue = document.getElementById('bcv-rate-value');
@@ -704,6 +1084,9 @@ loginForm.addEventListener('submit', async (e) => {
     localStorage.setItem('admin_token', token);
     loginError.classList.add('hidden');
     showPanel();
+    // Las impresoras se detectan al entrar: si alguien enchufó una justo antes,
+    // el panel la ve sin tener que recargar.
+    pedirPrintersSiHaySesion();
   } catch (err) {
     loginError.textContent = err.message;
     loginError.classList.remove('hidden');
@@ -874,6 +1257,22 @@ async function readApiJson(res) {
     throw new Error(`El servidor respondió HTTP ${res.status} en lugar de JSON. Ejecuta npm start y recarga el panel.`);
   }
   return res.json();
+}
+
+// En Render la instancia se duerme: la primera respuesta puede ser el HTML de
+// "spinning up" o un 503 en vez de JSON. Un reintento tras esperar lo resuelve.
+async function fetchJsonWithWarmup(url, options = {}, attempts = 2) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const res = await fetch(url, { cache: 'no-store', ...options });
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      return readApiJson(res);
+    }
+    lastError = new Error(`El servidor respondió HTTP ${res.status} en lugar de JSON. Espera unos segundos y reintenta.`);
+    if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, 2500));
+  }
+  throw lastError;
 }
 
 window.editExtra = function(id, type, name, price, included, available) {
@@ -1167,7 +1566,14 @@ window.deleteProduct = async function(id) {
   }
 };
 
-// Función auxiliar para escapar caracteres HTML en cadenas de texto
-function escapeHtml(str) {
-  return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+// Escapa texto antes de meterlo en innerHTML. La versión anterior solo cambiaba
+// comillas: "<img onerror=...>" pasaba intacto y era un XSS en todo el panel,
+// que además renderiza nombres de productos y de impresoras.
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

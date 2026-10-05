@@ -26,13 +26,17 @@ async function fetchBcvInfo() {
     activeBcvRates = {
       tasa_usd: Number(data.tasa_usd || 852.41),
       tasa_eur: Number(data.tasa_eur || 978.17),
+      tasa_usd_texto: data.tasa_usd_texto || '',
+      tasa_eur_texto: data.tasa_eur_texto || '',
       moneda_activa: String(data.moneda_activa || 'USD').toUpperCase()
     };
     const rateBanner = document.getElementById('client-bcv-rate');
     const rateKey = activeBcvRates.moneda_activa === 'EUR' ? 'EUR' : 'USD';
     const rateValue = activeBcvRates.moneda_activa === 'EUR' ? activeBcvRates.tasa_eur : activeBcvRates.tasa_usd;
+    // Se muestra el texto publicado por el BCV, no un redondeo del número.
+    const rateTexto = activeBcvRates.moneda_activa === 'EUR' ? activeBcvRates.tasa_eur_texto : activeBcvRates.tasa_usd_texto;
     if (rateBanner) {
-      rateBanner.textContent = `Tasa BCV: ${rateValue.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs/${rateKey}`;
+      rateBanner.textContent = `Tasa BCV: ${rateTexto || rateValue} Bs/${rateKey}`;
     }
     window.__bcvRate = rateValue;
   } catch (err) {

@@ -1,0 +1,20 @@
+{
+  "printers": [
+    {
+      "id": "kitchen",
+      "label": "Cocina",
+      "role": "kitchen",
+      "enabled": true,
+      "requireConnected": true,
+      "sortOrder": 1
+    },
+    {
+      "id": "counter",
+      "label": "Caja",
+      "role": "receipt",
+      "enabled": true,
+      "requireConnected": false,
+      "sortOrder": 2
+    }
+  ]
+}

@@ -1,10 +1,9 @@
-import fs from 'fs';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { formatBcvRate } from '../rates.js';
 
-// Helper para enviar comandas RAW a una impresora térmica Linux local.
-const execAsync = promisify(exec);
-const printerName = process.env.PRINTER_NAME || 'POS-80';
+// Generacion de tickets ESC/POS. Este modulo NO sabe nada de impresoras,
+// colas ni del sistema: solo produce el texto y los bytes.
+// El destino y el envio viven en utils/printer/index.js.
+
 const PAPER_WIDTH = 48;
 const CUT_SEQUENCE = Buffer.from([0x1D, 0x56, 0x41, 0x00]);
 const DOUBLE_HEIGHT_ON = Buffer.from([0x1D, 0x21, 0x01]);
@@ -12,9 +11,9 @@ const DOUBLE_HEIGHT_OFF = Buffer.from([0x1D, 0x21, 0x00]);
 const BOLD_ON = Buffer.from([0x1B, 0x45, 0x01]);
 const BOLD_OFF = Buffer.from([0x1B, 0x45, 0x00]);
 
-const toEscPosBinary = (value = '') => Buffer.from(String(value ?? '').replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))), 'binary');
+export const toEscPosBinary = (value = '') => Buffer.from(String(value ?? '').replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))), 'binary');
 
-const normalizeText = (value, fallback = '') => {
+export const normalizeText = (value, fallback = '') => {
   if (value === null || value === undefined) return fallback;
   const text = String(value).trim();
   return text || fallback;
@@ -176,9 +175,7 @@ export function generarCuentaCliente(order = {}, options = {}) {
     const unitPrice = Number(item.unit_price ?? item.price ?? 0);
     return sum + quantity * unitPrice;
   }, 0));
-  const service = Number(order.service ?? 0);
-  const tax = Number(order.tax ?? 0);
-  const total = Number(order.total ?? subtotal + service + tax);
+  const total = Number(order.total ?? subtotal);
   const { date, time } = getTimestamp();
 
   const lines = [
@@ -212,18 +209,14 @@ export function generarCuentaCliente(order = {}, options = {}) {
   lines.push(repeatChar('-', PAPER_WIDTH));
   lines.push(`${leftAlign('Subtotal', 18)} ${rightAlign('$ ' + subtotal.toFixed(2), 24)}`);
 
-  if (service > 0) {
-    lines.push(`${leftAlign('Servicio', 18)} ${rightAlign('$ ' + service.toFixed(2), 24)}`);
-  }
-
-  if (tax > 0) {
-    lines.push(`${leftAlign('Impuestos', 18)} ${rightAlign('$ ' + tax.toFixed(2), 24)}`);
-  }
-
-  const activeRate = Number(order.tasa_bcv || order.bcv_rate || order.tasa || 852.41);
+  // La tasa se imprime tal como la publica el BCV, nunca redondeada.
+  const tasaNumerica = Number(order.tasa_bcv || order.bcv_rate || order.tasa);
+  const activeRate = Number.isFinite(tasaNumerica) && tasaNumerica > 0 ? tasaNumerica : 852.41;
+  const textoPublicado = String(order.tasa_bcv_texto || '').trim();
+  const activeRateTexto = /^\d[\d.,]*$/.test(textoPublicado) ? textoPublicado : formatBcvRate(activeRate);
   const totalBs = Number(total * activeRate);
   lines.push(`${leftAlign('TOTAL', 18)} ${rightAlign('$ ' + total.toFixed(2), 24)}`);
-  lines.push(`${leftAlign('TASA BCV', 18)} ${rightAlign(activeRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Bs/$', 24)}`);
+  lines.push(`${leftAlign('TASA BCV', 18)} ${rightAlign(activeRateTexto + ' Bs/$', 24)}`);
   lines.push(`${leftAlign('TOTAL BS', 18)} ${rightAlign(totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Bs.', 24)}`);
   lines.push('');
   lines.push(centerText('*** NO DA DERECHO A CRÉDITO FISCAL ***', PAPER_WIDTH));
@@ -237,36 +230,4 @@ export function generarCuentaCliente(order = {}, options = {}) {
 
 export function buildKitchenTicket(order = {}, options = {}) {
   return generarComandaCocina(order, options);
-}
-
-export async function sendKitchenTicket(order = {}, options = {}) {
-  const printer = normalizeText(options.printerName || process.env.PRINTER_NAME || printerName, 'POS-80');
-  const ticket = options.type === 'cliente'
-    ? generarCuentaCliente(order, options)
-    : generarComandaCocina(order, options);
-
-  const rawTicket = toEscPosBinary(ticket);
-  const tempFile = `/tmp/${Date.now()}_${Math.random().toString(16).slice(2)}.bin`;
-  fs.writeFileSync(tempFile, rawTicket);
-
-  try {
-    const command = `lp -d ${printer} -o raw "${tempFile}"`;
-    const result = await execAsync(command, { timeout: 20000, maxBuffer: 1024 * 1024 });
-    return {
-      success: true,
-      printer,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      command,
-    };
-  } catch (error) {
-    const message = error?.stderr || error?.message || 'No se pudo enviar la comanda a la impresora.';
-    throw new Error(message);
-  } finally {
-    try {
-      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-    } catch {
-      // Ignorar limpieza del archivo temporal si el sistema deja de estar disponible.
-    }
-  }
 }

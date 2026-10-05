@@ -1582,4 +1582,44 @@ button { cursor: pointer; }
 .cart-total { margin: 15px 0; padding-top: 14px; border-top: 1px dashed rgba(17,24,39,0.12); color: #4b5563; font: 700 13px Inter, sans-serif; }
 .cart-total strong { color: var(--client-red); font-size: 22px; }
 .whatsapp-action { width: 100%; border: 0; border-radius: 9px; padding: 13px; background: linear-gradient(135deg, var(--client-green), #1d9c5f); color: #fff; font: 700 13px Inter, sans-serif; }
-@media (max-width: 560px) { .hero-inner { min-height: 152px; } .hero-flame { right: 4%; } .menu-heading { align-items: start; flex-direction: column; gap: 5px; } .product-list { grid-template-columns: 1fr; gap: 12px; } .cart-fab { right: 12px; bottom: 12px; left: 12px; width: auto; } .cart-panel { border-radius: 16px 16px 0 0; } .modal { align-items: end; padding: 0; } .modal-panel { max-height: 92vh; border-radius: 16px 16px 0 0; } .checkout-grid { grid-template-columns: 1fr; } .modal-footer { align-items: stretch; flex-direction: column; } .modal-order-actions { justify-content: space-between; } }
+
+/* ------------------------------------------------------------------
+   Panel de impresoras
+   El objetivo es que el dueño entienda qué está pasando sin saber nada de
+   CUPS: por eso el estado real se escribe en palabras ("Conectada",
+   "Impresora desconectada") y no en códigos.
+   ------------------------------------------------------------------ */
+.printers-status { margin: 4px 0 14px; color: var(--muted); font-size: 0.86rem; font-weight: 600; }
+.printers-alerts { display: grid; gap: 8px; margin-bottom: 14px; }
+.printers-alert { padding: 11px 13px; border-radius: 11px; border: 1px solid rgba(217,119,6,0.28); background: rgba(217,119,6,0.1); color: #8a4b04; font-size: 0.82rem; font-weight: 600; line-height: 1.45; }
+.printers-subtitle { margin: 20px 0 8px; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.printers-hint { font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--muted); opacity: 0.8; }
+.printers-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.printer-role { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); }
+.printer-role-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.printer-role-head strong { font-size: 0.95rem; }
+.printer-role-target { font-size: 0.88rem; font-weight: 700; }
+.printer-role-target em { color: var(--muted); font-weight: 600; }
+.printer-role-hint { color: var(--muted); font-size: 0.76rem; line-height: 1.4; }
+.printer-role-actions { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.printer-role-actions .printer-select { flex: 1 1 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: #fff; font: inherit; font-size: 0.8rem; color: var(--text); }
+.printer-role-actions button { padding: 7px 11px; font-size: 0.78rem; }
+.badge { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px; font-size: 0.7rem; font-weight: 800; white-space: nowrap; }
+.badge.ok { background: rgba(0,140,69,0.12); color: var(--success-text); }
+.badge.warn { background: rgba(217,119,6,0.14); color: #8a4b04; }
+.badge.bad { background: rgba(196,30,58,0.12); color: var(--danger); }
+.badge.muted { background: rgba(75,85,99,0.12); color: var(--muted); }
+.printers-list { display: grid; gap: 9px; }
+.printer-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.printer-row.compact { padding: 10px 12px; }
+.printer-row-main { min-width: 0; display: grid; gap: 3px; }
+.printer-row-name { display: flex; align-items: center; gap: 8px; font-size: 0.86rem; font-weight: 800; }
+.printer-row-sub { color: var(--muted); font-size: 0.76rem; }
+.printer-row-why { color: var(--muted); font-size: 0.75rem; line-height: 1.4; }
+.printer-row-warn { color: #8a4b04; font-size: 0.75rem; font-weight: 700; }
+.printers-unprovisioned { margin-top: 4px; }
+.printers-jobs { margin-top: 20px; }
+.printers-jobs summary { cursor: pointer; font-size: 0.82rem; font-weight: 700; color: var(--muted); }
+.printers-actions { display: flex; gap: 8px; margin: 12px 0; }
+.printers-actions button { padding: 8px 13px; font-size: 0.8rem; }
+@media (max-width: 560px) { .hero-inner { min-height: 152px; } .hero-flame { right: 4%; } .menu-heading { align-items: start; flex-direction: column; gap: 5px; } .product-list { grid-template-columns: 1fr; gap: 12px; } .cart-fab { right: 12px; bottom: 12px; left: 12px; width: auto; } .cart-panel { border-radius: 16px 16px 0 0; } .modal { align-items: end; padding: 0; } .modal-panel { max-height: 92vh; border-radius: 16px 16px 0 0; } .checkout-grid { grid-template-columns: 1fr; } .modal-footer { align-items: stretch; flex-direction: column; } .modal-order-actions { justify-content: space-between; } }.printers-agent { margin-bottom: 14px; padding: 12px 13px; border: 1px dashed var(--border); border-radius: 12px; }

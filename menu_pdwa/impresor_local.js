@@ -1,12 +1,20 @@
 #!/usr/bin/env node
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { io } from 'socket.io-client';
+// Agente de impresión local.
+//
+// Corre en el equipo donde están las impresoras físicas (el del restaurante) y
+// recibe por socket los tickets que genera el servidor. Toda la lógica de qué
+// impresora usar y si se imprimió de verdad vive en utils/printer/, no aquí:
+// este archivo solo habla con el servidor y con el subsistema de impresión.
 
-const execAsync = promisify(exec);
+import { io } from 'socket.io-client';
+import { printBytes, getDiagnostics, printJobs } from './utils/printer/index.js';
+
+// Solo etiqueta los logs. La impresora real se decide en runtime.
+const tag = process.env.PRINTER_LOG_TAG || 'POS';
+const log = (...args) => console.log(`[${tag}]`, ...args);
+const warn = (...args) => console.warn(`[${tag}]`, ...args);
+const fail = (...args) => console.error(`[${tag}]`, ...args);
+
 const defaultRenderUrl = process.env.RENDER_URL || 'https://pdwa-gauchos.onrender.com';
 const normalizeSocketUrl = (value) => {
   const raw = String(value || '').trim();
@@ -15,47 +23,44 @@ const normalizeSocketUrl = (value) => {
   return `https://${raw.replace(/\/+$/, '')}`;
 };
 const socketUrl = normalizeSocketUrl(process.env.SOCKET_URL || defaultRenderUrl);
-const printerName = process.env.PRINTER_NAME || 'POS-80';
 
-const makeTempTicketPath = () => {
-  const tempDir = os.tmpdir();
-  return path.join(tempDir, `ticket_pos_${Date.now()}_${Math.random().toString(16).slice(2)}.bin`);
-};
-
+// Convierte el payload que manda el servidor a bytes ESC/POS. El servidor
+// envía el texto con escapes \xNN en lugar de binario puro porque JSON no
+// transporta bytes crudos.
 const decodeEscPosPayload = (input) => {
-  const raw = Buffer.isBuffer(input) ? input : String(input || '');
-  const asBinary = Buffer.isBuffer(raw) ? raw : Buffer.from(raw, 'binary');
-  const text = asBinary.toString('binary');
+  if (Buffer.isBuffer(input)) return input;
+  const asText = Buffer.from(String(input || ''), 'binary').toString('binary');
   return Buffer.from(
-    text.replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))),
+    asText.replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))),
     'binary'
   );
 };
 
-const printOnClient = async (content, printer = printerName) => {
-  const tempPath = makeTempTicketPath();
-  const bufferComandos = decodeEscPosPayload(content);
-  fs.writeFileSync(tempPath, bufferComandos);
-
-  try {
-    if (process.platform === 'linux') {
-      console.log(`[${printer}] Imprimiendo en Linux via lp -d ${printer} -o raw ...`);
-      await execAsync(`lp -d ${printer} -o raw "${tempPath}"`);
-    } else if (process.platform === 'win32') {
-      console.log(`[${printer}] Imprimiendo en Windows via print /D:"${printer}" ...`);
-      await execAsync(`print /D:"${printer}" "${tempPath}"`);
-    } else {
-      console.log(`[${printer}] Plataforma no soportada: ${process.platform}. Guardando ticket temporal en ${tempPath}`);
-    }
-  } catch (error) {
-    console.error(`[${printer}] Error al imprimir el ticket local:`, error.message || error);
-  } finally {
-    try {
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-    } catch (cleanupError) {
-      console.warn(`[${printer}] No se pudo eliminar el archivo temporal:`, cleanupError.message || cleanupError);
-    }
+/**
+ * Imprime un ticket recibido por el socket.
+ * Devuelve el resultado con su estado real, para poder informarlo de vuelta.
+ */
+const printOnClient = async (content, options = {}) => {
+  const buffer = decodeEscPosPayload(content);
+  if (!buffer.length) {
+    warn('Evento recibido sin datos ESC/POS.');
+    return { submitted: false, reason: 'Payload vacío' };
   }
+
+  const result = await printBytes({
+    bytes: buffer,
+    role: options.role || 'kitchen',
+    queue: options.queue || null,
+    confirm: options.confirm || 'background'
+  });
+
+  if (!result.submitted) {
+    fail(`Ticket NO enviado: ${result.reason}`);
+    return result;
+  }
+
+  log(`Enviado a ${result.queue} (origen: ${result.source}). Trabajo ${result.jobId}.`);
+  return result;
 };
 
 const socket = io(socketUrl, {
@@ -68,36 +73,170 @@ const socket = io(socketUrl, {
   forceNew: true,
 });
 
-socket.on('connect', () => {
-  console.log(`[${printerName}] Conectado exitosamente al servidor de Render. Listo para recibir impresiones.`);
-  console.log(`[${printerName}] URL del servidor: ${socketUrl}`);
+/**
+ * Avisa al servidor qué hay en este equipo. El panel lo muestra, así el
+ * administrador no tiene que adivinar por qué no le sale la comanda.
+ */
+const reportInventory = async () => {
+  try {
+    const diag = await getDiagnostics();
+    const resumen = [];
+
+    for (const logical of diag.impresorasLogicas || []) {
+      resumen.push(`${logical.label}: ${logical.destino || 'SIN IMPRESORA'}${logical.aviso ? ` (${logical.aviso})` : ''}`);
+    }
+    for (const printer of diag.impresorasDetectadas || []) {
+      resumen.push(`cola ${printer.cola}: ${printer.modelo || printer.estado}`);
+    }
+
+    if (diag.avisoRawWindows) warn(diag.avisoRawWindows);
+
+    const sinDestino = (diag.impresorasLogicas || []).filter(p => !p.destino);
+    if (sinDestino.length) {
+      fail('SIN IMPRESORA PARA: ' + sinDestino.map(p => p.label).join(', '));
+      for (const printer of diag.impresorasDetectadas || []) {
+        fail(`  - ${printer.cola}: ${printer.motivo}`);
+      }
+      fail('  Solución: enchufa la impresora y créale una cola desde el panel, o fija PRINTER_NAME.');
+    } else {
+      log('Inventario local:');
+      for (const line of resumen) log('  ' + line);
+    }
+
+    // Se envía al servidor para que aparezca en el panel.
+    socket.emit('inventario_impresoras', {
+      agente: tag,
+      plataforma: diag.plataforma,
+      provider: diag.provider,
+      impresoras: diag.impresorasDetectadas,
+      logicas: diag.impresorasLogicas,
+      resumen: diag.resumenTrabajos
+    });
+  } catch (error) {
+    warn('No se pudo verificar la impresora local:', error?.message || error);
+  }
+};
+
+socket.on('connect', async () => {
+  log('Conectado al servidor. Listo para recibir impresiones.');
+  log(`URL: ${socketUrl}`);
+  await reportInventory();
 });
 
 socket.on('connect_error', (error) => {
-  console.error(`[${printerName}] No se pudo conectar al servidor de Render.`);
-  console.error(`[${printerName}] URL: ${socketUrl}`);
-  console.error(`[${printerName}] Motivo: ${error?.message || error}`);
-  console.error('[POS-80] Verifica que el servicio de Render esté actualizado y que el backend esté sirviendo /socket.io');
+  fail('No se pudo conectar al servidor.');
+  fail(`URL: ${socketUrl}`);
+  fail(`Motivo: ${error?.message || error}`);
+  fail('Verifica que el backend esté sirviendo /socket.io');
 });
 
 socket.on('disconnect', (reason) => {
-  console.warn(`[${printerName}] Desconectado del servidor de Render. Motivo: ${reason}`);
+  warn(`Desconectado del servidor. Motivo: ${reason}`);
 });
 
 socket.on('imprimir_ticket', async (payload) => {
-  const { tipo, datosEscPos } = payload || {};
+  const { tipo, datosEscPos, role, jobId, wait } = payload || {};
   if (!datosEscPos) {
-    console.warn(`[${printerName}] Evento recibido sin datos ESC/POS.`);
+    warn('Evento recibido sin datos ESC/POS.');
     return;
   }
 
-  const tipoLabel = tipo || 'ticket';
-  console.log(`[${printerName}] Recibida impresión remota (${tipoLabel})`);
-  await printOnClient(datosEscPos, printerName);
+  // `cuenta` va a la impresora de caja; el resto, a la de cocina.
+  const destino = role || (tipo === 'cliente' || tipo === 'cuenta' ? 'counter' : 'kitchen');
+  log(`Comanda recibida (${tipo || destino})`);
+
+  // Si el servidor espera respuesta, hay que confirmar de verdad: "enviado" no
+  // le sirve para decidir si le dice al cliente que salió papel.
+  const result = await printOnClient(datosEscPos, {
+    role: destino,
+    confirm: wait ? 'wait' : 'background'
+  });
+
+  const report = (extra) => socket.emit('job_estado', {
+    serverJobId: jobId || null,
+    agentJobId: result?.jobId || null,
+    submitted: Boolean(result?.submitted),
+    printed: result?.printed ?? null,
+    status: result?.status || (result?.submitted ? 'sent' : 'failed'),
+    queue: result?.queue || null,
+    reason: result?.reason || null,
+    ...extra
+  });
+
+  // Respuesta inmediata: el servidor ya puede dejar de esperar al POS.
+  report();
+
+  // Y luego el veredicto real, cuando el trabajo haya salido (o no) de la cola.
+  // Sin esto el servidor se quedaría con "enviado" para siempre, que es
+  // justamente la mentira que hay que evitar.
+  if (!wait && result?.submitted && result?.jobId) watchJob(jobId, result.jobId);
+});
+
+/**
+ * Sigue un trabajo hasta que deja de estar pendiente y avisa al servidor.
+ * El agente no bloquea nada: solo espera en segundo plano.
+ */
+const watchJob = (serverJobId, agentJobId) => {
+  const deadline = Date.now() + 40000;
+  const poll = () => {
+    const job = printJobs.getJob(agentJobId);
+    if (!job) return;
+    if (job.status === 'sending' || job.status === 'sent') {
+      if (Date.now() < deadline) return setTimeout(poll, 500);
+      return socket.emit('job_estado', {
+        serverJobId,
+        agentJobId,
+        printed: null,
+        status: 'unconfirmable',
+        reason: 'El trabajo no salió de la cola en 40s.'
+      });
+    }
+    socket.emit('job_estado', {
+      serverJobId,
+      agentJobId,
+      printed: job.status === 'printed' ? true : job.status === 'unconfirmable' ? null : false,
+      status: job.status,
+      queue: job.queue,
+      reason: job.reason || null
+    });
+  };
+  setTimeout(poll, 500);
+};
+
+/** Pide una prueba de impresión desde el panel. */
+socket.on('probar_impresora', async (payload) => {
+  const { role, texto } = payload || {};
+  const contenido = texto
+    ? decodeEscPosPayload(texto)
+    : decodeEscPosPayload([
+        '\\x1b\\x40',
+        'PRUEBA DE IMPRESION',
+        '------------------------------',
+        new Date().toLocaleString('es-VE'),
+        'Si lees esto, funciona.',
+        '------------------------------',
+        '\\x1d\\x56\\x41\\x00'
+      ].join('\\n'));
+
+  const result = await printOnClient(contenido, { role: role || 'kitchen', confirm: 'wait' });
+  socket.emit('job_estado', {
+    submitted: Boolean(result?.submitted),
+    printed: result?.printed ?? null,
+    status: result?.status || null,
+    queue: result?.queue || null,
+    reason: result?.reason || null,
+    prueba: true
+  });
+});
+
+/** Consulta el estado de un trabajo que este agente imprimió. */
+socket.on('consultar_job', (payload, reply) => {
+  const job = printJobs.getJob(payload?.jobId);
+  if (typeof reply === 'function') reply(job || null);
 });
 
 process.on('SIGINT', () => {
-  console.log(`[${printerName}] Cerrando cliente de impresión...`);
+  log('Cerrando agente de impresión...');
   socket.close();
   process.exit(0);
 });

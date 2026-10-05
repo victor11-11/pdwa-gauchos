@@ -1,0 +1,25 @@
+{
+  "_comentario": [
+    "Enlaces locales entre los roles del sistema y las colas de este equipo.",
+    "Este archivo NO se sube a git: cada equipo tiene sus propias impresoras.",
+    "Normalmente no hace falta crearlo a mano: el panel administrativo lo hace.",
+    "",
+    "Un 'rol' es lo que el sistema necesita (cocina, caja...). Una 'cola' es el",
+    "nombre que le da el sistema operativo. El enlace se comprueba cada vez que",
+    "se imprime: si la impresora asignada no esta conectada, el sistema avisa y",
+    "usa otra en lugar de enviar el trabajo a una cola que nunca imprimira.",
+    "",
+    "Para verlo a mano:  lpstat -e",
+    "Para crearlo desde la consola:  npm run printer -- enlazar kitchen MI_COLA",
+    "Para quitar un enlace:  npm run printer -- desenlazar kitchen"
+  ],
+  "bindings": {
+    "kitchen": {
+      "queue": "NOMBRE_DE_LA_COLA_DE_COCINA",
+      "serial": "SE_LECTURA_AUTOMATICAMENTE",
+      "connected": true,
+      "boundAt": null
+    }
+  },
+  "actualizado": null
+}
