@@ -87,6 +87,13 @@ impresora:
 SOCKET_URL=https://tu-servidor.onrender.com AGENT_TOKEN=<secreto> npm run agente
 ```
 
+Esto **sigue imprimiendo con CUPS**: el agente solo hace de puente entre Render
+y el equipo local, y usa el CUPS de ese equipo para detectar y enviar el
+trabajo. `AGENT_TOKEN` autentica ese puente; no reemplaza ni instala CUPS. Si
+prefieres probar sin token, puedes desactivar temporalmente la autenticación
+como se explica abajo, pero el agente local sigue siendo necesario mientras el
+servidor esté alojado en Render.
+
 El secreto lo imprime el servidor al arrancar:
 
 ```

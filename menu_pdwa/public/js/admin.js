@@ -675,6 +675,9 @@ const renderPrinters = () => {
   // --- avisos (duplicadas, sin impresoras, etc.) ---
   const avisos = [];
   for (const dup of data.duplicadas || []) avisos.push(dup.aviso);
+  if (!agente.conectado && data.cupsDisponible === false) {
+    avisos.push('Agente de impresión desconectado: Render no puede usar el CUPS ni la USB de tu computadora. Inicia impresor_local.js en el equipo de la impresora; ese agente imprimirá usando el CUPS local.');
+  }
   for (const logica of rolesMostrados) {
     if (!logica.destino && !logica.colaActual) avisos.push(`No hay impresora para "${logica.label}". Conecta una y asígnala aquí.`);
   }
@@ -693,7 +696,7 @@ const renderPrinters = () => {
     if (agente.conectado) {
       status.textContent = data.notaImpresion || 'Las comandas se envían a la ticketera del agente.';
     } else if (data.cupsDisponible === false) {
-      status.textContent = 'Este equipo no tiene sistema de impresión (CUPS). Las comandas se guardan igual, pero no se imprimen.';
+      status.textContent = 'Render no tiene acceso al CUPS de la impresora. Inicia impresor_local.js en el equipo de la ticketera; el agente usará allí CUPS para imprimir.';
     } else if (conectadas.length) {
       status.textContent = `${conectadas.length} impresora${conectadas.length > 1 ? 's' : ''} lista${conectadas.length > 1 ? 's' : ''} para usar en este equipo.`;
     } else {
